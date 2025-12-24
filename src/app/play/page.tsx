@@ -570,6 +570,7 @@ function PlayPageClient() {
   const [videoLoadingStage, setVideoLoadingStage] = useState<
     'initing' | 'sourceChanging'
   >('initing');
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   // 播放器就绪状态（用于触发 usePlaySync 的事件监听器设置）
   const [playerReady, setPlayerReady] = useState(false);
@@ -600,6 +601,39 @@ function PlayPageClient() {
   // -----------------------------------------------------------------------------
   // 工具函数（Utils）
   // -----------------------------------------------------------------------------
+
+  // 判断剧集是否已完结
+  const isSeriesCompleted = (detail: SearchResult | null): boolean => {
+    if (!detail) return false;
+
+    // 方法1：通过 vod_remarks 判断
+    if (detail.vod_remarks) {
+      const remarks = detail.vod_remarks.toLowerCase();
+      // 判定为完结的关键词
+      const completedKeywords = ['全', '完结', '大结局', 'end', '完'];
+      // 判定为连载的关键词
+      const ongoingKeywords = ['更新至', '连载', '第', '更新到'];
+
+      // 如果包含连载关键词，则为连载中
+      if (ongoingKeywords.some(keyword => remarks.includes(keyword))) {
+        return false;
+      }
+
+      // 如果包含完结关键词，则为已完结
+      if (completedKeywords.some(keyword => remarks.includes(keyword))) {
+        return true;
+      }
+    }
+
+    // 方法2：通过 vod_total 和实际集数对比判断
+    if (detail.vod_total && detail.vod_total > 0 && detail.episodes && detail.episodes.length > 0) {
+      // 如果实际集数 >= 总集数，则为已完结
+      return detail.episodes.length >= detail.vod_total;
+    }
+
+    // 无法判断，默认返回 false（连载中）
+    return false;
+  };
 
   // 播放源优选函数
   const preferBestSource = async (
@@ -1025,7 +1059,10 @@ function PlayPageClient() {
   };
 
   // 清理播放器资源的统一函数
-  const cleanupPlayer = () => {
+  const cleanupPlayer = async () => {
+    // 先清理Anime4K，避免GPU纹理错误
+    await cleanupAnime4K();
+
     if (artPlayerRef.current) {
       try {
         // 在销毁前从弹幕插件读取最新配置并保存
@@ -1033,7 +1070,7 @@ function PlayPageClient() {
           // 获取当前弹幕设置的快照，避免循环引用
           const currentDanmakuSettings = danmakuSettingsRef.current;
           const danmakuPluginOption = danmakuPluginRef.current.option;
-          
+
           const currentSettings = {
             ...currentDanmakuSettings,
             opacity: danmakuPluginOption.opacity || currentDanmakuSettings.opacity,
@@ -1059,10 +1096,19 @@ function PlayPageClient() {
         artPlayerRef.current.destroy();
         artPlayerRef.current = null;
 
+        // 清空 DOM 容器，确保没有残留元素
+        if (artRef.current) {
+          artRef.current.innerHTML = '';
+        }
+
         console.log('播放器资源已清理');
       } catch (err) {
         console.warn('清理播放器资源时出错:', err);
         artPlayerRef.current = null;
+        // 即使出错也要清空容器
+        if (artRef.current) {
+          artRef.current.innerHTML = '';
+        }
       }
     }
   };
@@ -1076,8 +1122,10 @@ function PlayPageClient() {
 
     try {
       if (anime4kRef.current) {
-        anime4kRef.current.stop?.();
+        anime4kRef.current.controller?.stop?.();
         anime4kRef.current = null;
+        // 等待旧实例完全停止，避免双重渲染
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       const video = artPlayerRef.current.video as HTMLVideoElement;
@@ -1939,6 +1987,7 @@ function PlayPageClient() {
       // 显示换源加载状态
       setVideoLoadingStage('sourceChanging');
       setIsVideoLoading(true);
+      setVideoError(null);
 
       // 记录当前播放进度（仅在同一集数切换时恢复）
       const currentPlayTime = artPlayerRef.current?.currentTime || 0;
@@ -2110,6 +2159,39 @@ function PlayPageClient() {
   // ---------------------------------------------------------------------------
   // 弹幕处理函数
   // ---------------------------------------------------------------------------
+8  
+  // 匹配弹幕集数：优先根据集数标题中的数字匹配，降级到索引匹配
+  const matchDanmakuEpisode = (
+    currentEpisodeIndex: number,
+    danmakuEpisodes: Array<{ episodeId: number; episodeTitle: string }>,
+    videoEpisodeTitle?: string
+  ) => {
+    if (!danmakuEpisodes.length) return null;
+
+    const extractEpisodeNumber = (title: string): number | null => {
+      if (!title) return null;
+      const match = title.match(/^(\d+)$|第?\s*(\d+)\s*[集话話]?/);
+      return match ? parseInt(match[1] || match[2], 10) : null;
+    };
+
+    if (videoEpisodeTitle) {
+      const episodeNum = extractEpisodeNumber(videoEpisodeTitle);
+      if (episodeNum !== null) {
+        for (const ep of danmakuEpisodes) {
+          const danmakuNum = extractEpisodeNumber(ep.episodeTitle);
+          if (danmakuNum === episodeNum) {
+            console.log(`[弹幕匹配] 根据集数标题匹配: ${videoEpisodeTitle} -> ${ep.episodeTitle}`);
+            return ep;
+          }
+        }
+      }
+    }
+
+    const index = Math.min(currentEpisodeIndex, danmakuEpisodes.length - 1);
+    console.log(`[弹幕匹配] 降级到索引匹配: 索引 ${currentEpisodeIndex} -> ${danmakuEpisodes[index].episodeTitle}`);
+    return danmakuEpisodes[index];
+  };
+
   // 加载弹幕到播放器
   const loadDanmaku = async (episodeId: number) => {
     if (!danmakuPluginRef.current) {
@@ -2253,10 +2335,8 @@ function PlayPageClient() {
 
         // 根据当前集数选择对应的弹幕
         const currentEp = currentEpisodeIndexRef.current;
-        const episode =
-          episodesResult.bangumi.episodes[
-            Math.min(currentEp, episodesResult.bangumi.episodes.length - 1)
-          ];
+        const videoEpTitle = detailRef.current?.episodes_titles?.[currentEp];
+        const episode = matchDanmakuEpisode(currentEp, episodesResult.bangumi.episodes, videoEpTitle);
 
         if (episode) {
           const selection: DanmakuSelection = {
@@ -2357,10 +2437,8 @@ function PlayPageClient() {
 
           // 根据当前集数选择对应的弹幕
           const currentEp = currentEpisodeIndexRef.current;
-          const episode =
-            episodesResult.bangumi.episodes[
-              Math.min(currentEp, episodesResult.bangumi.episodes.length - 1)
-            ];
+          const videoEpTitle = detailRef.current?.episodes_titles?.[currentEp];
+          const episode = matchDanmakuEpisode(currentEp, episodesResult.bangumi.episodes, videoEpTitle);
 
           if (episode) {
             const selection: DanmakuSelection = {
@@ -2470,10 +2548,8 @@ function PlayPageClient() {
 
           // 根据当前集数选择对应的弹幕
           const currentEp = currentEpisodeIndexRef.current;
-          const episode =
-            episodesResult.bangumi.episodes[
-              Math.min(currentEp, episodesResult.bangumi.episodes.length - 1)
-            ];
+          const videoEpTitle = detailRef.current?.episodes_titles?.[currentEp];
+          const episode = matchDanmakuEpisode(currentEp, episodesResult.bangumi.episodes, videoEpTitle);
 
           if (episode) {
             const selection: DanmakuSelection = {
@@ -2756,11 +2832,13 @@ function PlayPageClient() {
         await saveFavorite(currentSourceRef.current, currentIdRef.current, {
           title: videoTitleRef.current,
           source_name: detailRef.current?.source_name || '',
-          year: detailRef.current?.year,
+          year: detailRef.current?.year || 'unknown',
           cover: detailRef.current?.poster || '',
           total_episodes: detailRef.current?.episodes.length || 1,
           save_time: Date.now(),
           search_title: searchTitle,
+          is_completed: isSeriesCompleted(detailRef.current),
+          vod_remarks: detailRef.current?.vod_remarks,
         });
         setFavorited(true);
       }
@@ -2849,13 +2927,29 @@ function PlayPageClient() {
     }
 
     // WebKit浏览器或首次创建：销毁之前的播放器实例并创建新的
-    if (artPlayerRef.current) {
-      cleanupPlayer();
-    }
-
     // 异步初始化播放器
     const initPlayer = async () => {
       try {
+        // 先清理旧播放器实例
+        if (artPlayerRef.current) {
+          await cleanupPlayer();
+        }
+
+        // iOS需要等待DOM完全清理
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // 双重检查：如果旧播放器仍然存在，再次清理
+        if (artPlayerRef.current) {
+          console.warn('旧播放器仍存在，再次清理');
+          await cleanupPlayer();
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // 再次确保容器为空
+        if (artRef.current) {
+          artRef.current.innerHTML = '';
+        }
+
         // 动态导入播放器库
         const [ArtplayerModule, HlsModule, DanmukuPlugin] = await Promise.all([
           import('artplayer'),
@@ -2958,6 +3052,32 @@ function PlayPageClient() {
               if (data.fatal) {
                 switch (data.type) {
                   case Hls.ErrorTypes.NETWORK_ERROR:
+                    // 检查是否是 manifest 加载错误（通常是 403/404/CORS 错误）
+                    if (data.details === 'manifestLoadError') {
+                      console.log('Manifest 加载失败：可能是 403/404 或 CORS 错误');
+                      hls.destroy();
+                      // 检查是否有响应码
+                      const statusCode = data.response?.code || data.response?.status;
+                      if (statusCode === 403) {
+                        setVideoError('访问被拒绝 (403)');
+                      } else if (statusCode === 404) {
+                        setVideoError('视频不存在 (404)');
+                      } else if (statusCode) {
+                        setVideoError(`HTTP ${statusCode} 错误`);
+                      } else {
+                        // CORS 错误或其他网络错误
+                        setVideoError('无法访问视频源（可能是跨域限制或访问被拒绝）');
+                      }
+                      return;
+                    }
+                    // 检查其他 HTTP 错误状态码
+                    const statusCode = data.response?.code || data.response?.status;
+                    if (statusCode && statusCode >= 400) {
+                      console.log(`HTTP ${statusCode} 错误`);
+                      hls.destroy();
+                      setVideoError(`HTTP ${statusCode} 错误`);
+                      return;
+                    }
                     console.log('网络错误，尝试恢复...');
                     hls.startLoad();
                     break;
@@ -2968,6 +3088,7 @@ function PlayPageClient() {
                   default:
                     console.log('无法恢复的错误');
                     hls.destroy();
+                    setVideoError('视频加载错误');
                     break;
                 }
               }
@@ -3452,13 +3573,24 @@ function PlayPageClient() {
                             (window.navigator as any).standalone === true;
 
               // 检查是否已经在原生全屏状态
-              const isInNativeFullscreen = document.fullscreenElement !== null;
+              const isInNativeFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
 
               // 如果已经在原生全屏状态，退出原生全屏
               if (isInNativeFullscreen) {
-                document.exitFullscreen().catch((err: Error) => {
-                  console.error('退出全屏失败:', err);
-                });
+                const exitFullscreen = (document as any).exitFullscreen ||
+                                      (document as any).webkitExitFullscreen ||
+                                      (document as any).mozCancelFullScreen ||
+                                      (document as any).msExitFullscreen;
+                if (exitFullscreen) {
+                  try {
+                    const result = exitFullscreen.call(document);
+                    if (result && typeof result.catch === 'function') {
+                      result.catch((err: Error) => console.error('退出全屏失败:', err));
+                    }
+                  } catch (err) {
+                    console.error('退出全屏失败:', err);
+                  }
+                }
                 return;
               }
 
@@ -3813,6 +3945,7 @@ function PlayPageClient() {
 
         // 隐藏换源加载状态
         setIsVideoLoading(false);
+        setVideoError(null);
       });
 
       // 监听视频时间更新事件，实现跳过片头片尾
@@ -4258,14 +4391,28 @@ function PlayPageClient() {
       <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20'>
         {/* 第一行：影片标题 */}
         <div className='py-1'>
-          <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>
-            {videoTitle || '影片标题'}
-            {totalEpisodes > 1 && (
-              <span className='text-gray-500 dark:text-gray-400'>
-                {` > ${
-                  detail?.episodes_titles?.[currentEpisodeIndex] ||
-                  `第 ${currentEpisodeIndex + 1} 集`
+          <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap'>
+            <span>
+              {videoTitle || '影片标题'}
+              {totalEpisodes > 1 && (
+                <span className='text-gray-500 dark:text-gray-400'>
+                  {` > ${
+                    detail?.episodes_titles?.[currentEpisodeIndex] ||
+                    `第 ${currentEpisodeIndex + 1} 集`
+                  }`}
+                </span>
+              )}
+            </span>
+            {/* 完结状态标识 */}
+            {detail && totalEpisodes > 1 && (
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  isSeriesCompleted(detail)
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
                 }`}
+              >
+                {isSeriesCompleted(detail) ? '已完结' : '连载中'}
               </span>
             )}
           </h1>
@@ -4334,39 +4481,77 @@ function PlayPageClient() {
                 ></div>
 
                 {/* 换源加载蒙层 */}
-                {isVideoLoading && (
+                {(isVideoLoading || videoError) && (
                   <div className='absolute inset-0 bg-black/85 backdrop-blur-sm rounded-xl flex items-center justify-center z-[500] transition-all duration-300'>
                     <div className='text-center max-w-md mx-auto px-6'>
-                      {/* 动画影院图标 */}
-                      <div className='relative mb-8'>
-                        <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
-                          <div className='text-white text-4xl'>🎬</div>
-                          {/* 旋转光环 */}
-                          <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
-                        </div>
+                      {videoError ? (
+                        // 错误显示
+                        <>
+                          {/* 错误图标 */}
+                          <div className='relative mb-8'>
+                            <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-red-500 to-rose-600 rounded-2xl shadow-2xl flex items-center justify-center'>
+                              <div className='text-white text-4xl'>⚠️</div>
+                            </div>
+                          </div>
 
-                        {/* 浮动粒子效果 */}
-                        <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
-                          <div className='absolute top-2 left-2 w-2 h-2 bg-green-400 rounded-full animate-bounce'></div>
-                          <div
-                            className='absolute top-4 right-4 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce'
-                            style={{ animationDelay: '0.5s' }}
-                          ></div>
-                          <div
-                            className='absolute bottom-3 left-6 w-1 h-1 bg-lime-400 rounded-full animate-bounce'
-                            style={{ animationDelay: '1s' }}
-                          ></div>
-                        </div>
-                      </div>
+                          {/* 错误消息 */}
+                          <div className='space-y-4'>
+                            <p className='text-xl font-semibold text-white'>
+                              播放失败
+                            </p>
+                            <p className='text-base text-gray-300'>
+                              {videoError}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setVideoError(null);
+                                setIsVideoLoading(true);
+                                // 重新加载视频
+                                if (artPlayerRef.current) {
+                                  artPlayerRef.current.url = videoUrl;
+                                }
+                              }}
+                              className='mt-4 px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200'
+                            >
+                              重试
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        // 加载显示
+                        <>
+                          {/* 动画影院图标 */}
+                          <div className='relative mb-8'>
+                            <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+                              <div className='text-white text-4xl'>🎬</div>
+                              {/* 旋转光环 */}
+                              <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
+                            </div>
 
-                      {/* 换源消息 */}
-                      <div className='space-y-2'>
-                        <p className='text-xl font-semibold text-white animate-pulse'>
-                          {videoLoadingStage === 'sourceChanging'
-                            ? '🔄 切换播放源...'
-                            : '🔄 视频加载中...'}
-                        </p>
-                      </div>
+                            {/* 浮动粒子效果 */}
+                            <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
+                              <div className='absolute top-2 left-2 w-2 h-2 bg-green-400 rounded-full animate-bounce'></div>
+                              <div
+                                className='absolute top-4 right-4 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce'
+                                style={{ animationDelay: '0.5s' }}
+                              ></div>
+                              <div
+                                className='absolute bottom-3 left-6 w-1 h-1 bg-lime-400 rounded-full animate-bounce'
+                                style={{ animationDelay: '1s' }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* 换源消息 */}
+                          <div className='space-y-2'>
+                            <p className='text-xl font-semibold text-white animate-pulse'>
+                              {videoLoadingStage === 'sourceChanging'
+                                ? '🔄 切换播放源...'
+                                : '🔄 视频加载中...'}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
