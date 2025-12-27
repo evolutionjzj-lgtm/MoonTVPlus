@@ -356,3 +356,150 @@ export function getGenreNames(genreIds: number[] = [], limit: number = 2): strin
     .filter(Boolean)
     .slice(0, limit);
 }
+
+/**
+ * 搜索多媒体内容
+ * @param apiKey - TMDB API Key
+ * @param query - 搜索关键词
+ * @param proxy - 代理服务器地址
+ * @returns 搜索结果列表
+ */
+export async function searchTMDBMulti(
+  apiKey: string,
+  query: string,
+  proxy?: string
+): Promise<{ code: number; results: any[] }> {
+  try {
+    if (!apiKey || !query) {
+      return { code: 400, results: [] };
+    }
+
+    const url = `https://api.themoviedb.org/3/search/multi?api_key=${apiKey}&language=zh-CN&query=${encodeURIComponent(query)}&page=1`;
+    const fetchOptions: any = proxy
+      ? {
+          agent: new HttpsProxyAgent(proxy, {
+            timeout: 30000,
+            keepAlive: false,
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      : {
+          signal: AbortSignal.timeout(15000),
+        };
+
+    const response = await nodeFetch(url, fetchOptions);
+
+    if (!response.ok) {
+      console.error('TMDB Search API 请求失败:', response.status, response.statusText);
+      return { code: response.status, results: [] };
+    }
+
+    const data: any = await response.json();
+
+    return {
+      code: 200,
+      results: data.results || [],
+    };
+  } catch (error) {
+    console.error('搜索 TMDB 内容失败:', error);
+    return { code: 500, results: [] };
+  }
+}
+
+/**
+ * 获取电影推荐
+ * @param apiKey - TMDB API Key
+ * @param movieId - 电影ID
+ * @param proxy - 代理服务器地址
+ * @returns 推荐列表
+ */
+export async function getTMDBMovieRecommendations(
+  apiKey: string,
+  movieId: number,
+  proxy?: string
+): Promise<{ code: number; results: TMDBMovie[] }> {
+  try {
+    if (!apiKey || !movieId) {
+      return { code: 400, results: [] };
+    }
+
+    const url = `https://api.themoviedb.org/3/movie/${movieId}/recommendations?api_key=${apiKey}&language=zh-CN&page=1`;
+    const fetchOptions: any = proxy
+      ? {
+          agent: new HttpsProxyAgent(proxy, {
+            timeout: 30000,
+            keepAlive: false,
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      : {
+          signal: AbortSignal.timeout(15000),
+        };
+
+    const response = await nodeFetch(url, fetchOptions);
+
+    if (!response.ok) {
+      console.error('TMDB Movie Recommendations API 请求失败:', response.status, response.statusText);
+      return { code: response.status, results: [] };
+    }
+
+    const data: any = await response.json();
+
+    return {
+      code: 200,
+      results: data.results || [],
+    };
+  } catch (error) {
+    console.error('获取 TMDB 电影推荐失败:', error);
+    return { code: 500, results: [] };
+  }
+}
+
+/**
+ * 获取电视剧推荐
+ * @param apiKey - TMDB API Key
+ * @param tvId - 电视剧ID
+ * @param proxy - 代理服务器地址
+ * @returns 推荐列表
+ */
+export async function getTMDBTVRecommendations(
+  apiKey: string,
+  tvId: number,
+  proxy?: string
+): Promise<{ code: number; results: TMDBTVShow[] }> {
+  try {
+    if (!apiKey || !tvId) {
+      return { code: 400, results: [] };
+    }
+
+    const url = `https://api.themoviedb.org/3/tv/${tvId}/recommendations?api_key=${apiKey}&language=zh-CN&page=1`;
+    const fetchOptions: any = proxy
+      ? {
+          agent: new HttpsProxyAgent(proxy, {
+            timeout: 30000,
+            keepAlive: false,
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      : {
+          signal: AbortSignal.timeout(15000),
+        };
+
+    const response = await nodeFetch(url, fetchOptions);
+
+    if (!response.ok) {
+      console.error('TMDB TV Recommendations API 请求失败:', response.status, response.statusText);
+      return { code: response.status, results: [] };
+    }
+
+    const data: any = await response.json();
+
+    return {
+      code: 200,
+      results: data.results || [],
+    };
+  } catch (error) {
+    console.error('获取 TMDB 电视剧推荐失败:', error);
+    return { code: 500, results: [] };
+  }
+}

@@ -45,7 +45,7 @@ import EpisodeSelector from '@/components/EpisodeSelector';
 import DownloadEpisodeSelector from '@/components/DownloadEpisodeSelector';
 import PageLayout from '@/components/PageLayout';
 import DoubanComments from '@/components/DoubanComments';
-import DoubanRecommendations from '@/components/DoubanRecommendations';
+import SmartRecommendations from '@/components/SmartRecommendations';
 import DanmakuFilterSettings from '@/components/DanmakuFilterSettings';
 import Toast, { ToastProps } from '@/components/Toast';
 import { useEnableComments } from '@/hooks/useEnableComments';
@@ -5212,8 +5212,8 @@ function PlayPageClient() {
           </div>
         </div>
 
-        {/* 豆瓣推荐区域 */}
-        {videoDoubanId !== 0 && enableComments && (
+        {/* 推荐区域 */}
+        {(videoDoubanId !== 0 || videoTitle) && (
           <div className='mt-6 -mx-3 md:mx-0 md:px-4'>
             <div className='bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden'>
               {/* 标题 */}
@@ -5228,7 +5228,10 @@ function PlayPageClient() {
 
               {/* 推荐内容 */}
               <div className='px-3 pt-3 md:px-6 md:pt-6'>
-                <DoubanRecommendations doubanId={videoDoubanId} />
+                <SmartRecommendations
+                  doubanId={videoDoubanId !== 0 ? videoDoubanId : undefined}
+                  videoTitle={videoTitle}
+                />
               </div>
             </div>
           </div>
