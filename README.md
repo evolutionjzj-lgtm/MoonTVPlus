@@ -87,6 +87,10 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/mtvpls/MoonTVPlus)
 
+**一键部署到zeabur**
+
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/SCHCAY/deploy)
+
 ### Kvrocks 存储（推荐）
 
 ```yml
