@@ -151,3 +151,86 @@ export function clearAllDanmakuSelectionMemory(): void {
     console.error('[弹幕记忆] 清除所有记忆失败:', error);
   }
 }
+
+/**
+ * 保存用户搜索的弹幕关键词
+ * @param title 视频标题
+ * @param keyword 搜索关键词
+ */
+export function saveDanmakuSearchKeyword(title: string, keyword: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const key = `${STORAGE_KEY_PREFIX}keyword_${title}`;
+    sessionStorage.setItem(key, keyword);
+    console.log(`[弹幕记忆] 保存搜索关键词: ${title} -> ${keyword}`);
+  } catch (error) {
+    console.error('[弹幕记忆] 保存搜索关键词失败:', error);
+  }
+}
+
+/**
+ * 获取用户搜索的弹幕关键词
+ * @param title 视频标题
+ * @returns 搜索关键词，如果没有记录则返回 null
+ */
+export function getDanmakuSearchKeyword(title: string): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const key = `${STORAGE_KEY_PREFIX}keyword_${title}`;
+    const keyword = sessionStorage.getItem(key);
+
+    if (keyword) {
+      console.log(`[弹幕记忆] 读取搜索关键词: ${title} -> ${keyword}`);
+      return keyword;
+    }
+  } catch (error) {
+    console.error('[弹幕记忆] 读取搜索关键词失败:', error);
+  }
+
+  return null;
+}
+
+/**
+ * 保存用户手动选择的弹幕动漫ID（用于换集时自动匹配）
+ * @param title 视频标题
+ * @param animeId 弹幕动漫ID
+ */
+export function saveDanmakuAnimeId(title: string, animeId: number): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const key = `${STORAGE_KEY_PREFIX}anime_${title}`;
+    sessionStorage.setItem(key, animeId.toString());
+    console.log(`[弹幕记忆] 保存动漫ID: ${title} -> ${animeId}`);
+  } catch (error) {
+    console.error('[弹幕记忆] 保存动漫ID失败:', error);
+  }
+}
+
+/**
+ * 获取用户手动选择的弹幕动漫ID
+ * @param title 视频标题
+ * @returns 弹幕动漫ID，如果没有记录则返回 null
+ */
+export function getDanmakuAnimeId(title: string): number | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const key = `${STORAGE_KEY_PREFIX}anime_${title}`;
+    const value = sessionStorage.getItem(key);
+
+    if (value !== null) {
+      const animeId = parseInt(value, 10);
+      if (!isNaN(animeId)) {
+        console.log(`[弹幕记忆] 读取动漫ID: ${title} -> ${animeId}`);
+        return animeId;
+      }
+    }
+  } catch (error) {
+    console.error('[弹幕记忆] 读取动漫ID失败:', error);
+  }
+
+  return null;
+}

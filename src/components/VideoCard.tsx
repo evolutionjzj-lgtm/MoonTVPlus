@@ -110,6 +110,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
   const [searchFavorited, setSearchFavorited] = useState<boolean | null>(null); // 搜索结果的收藏状态
   const [showAIChat, setShowAIChat] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiDefaultMessageWithVideo, setAiDefaultMessageWithVideo] = useState('');
   const [showDetailPanel, setShowDetailPanel] = useState(false);
 
   // 检查AI功能是否启用
@@ -119,6 +120,12 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
         (window as any).RUNTIME_CONFIG?.AI_ENABLED &&
         (window as any).RUNTIME_CONFIG?.AI_ENABLE_VIDEOCARD_ENTRY;
       setAiEnabled(enabled);
+
+      // 加载AI默认消息配置
+      const defaultMsg = (window as any).RUNTIME_CONFIG?.AI_DEFAULT_MESSAGE_WITH_VIDEO;
+      if (defaultMsg) {
+        setAiDefaultMessageWithVideo(defaultMsg);
+      }
     }
   }, []);
 
@@ -159,9 +166,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
   const actualEpisodes = dynamicEpisodes;
   const actualYear = year;
   const actualQuery = query || '';
-  const actualSearchType = isAggregate
-    ? (actualEpisodes && actualEpisodes === 1 ? 'movie' : 'tv')
-    : type;
+  const actualSearchType = type;
 
   // 获取收藏状态（搜索结果页面不检查）
   useEffect(() => {
@@ -270,16 +275,38 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
       const url = `/live?source=${actualSource.replace('live_', '')}&id=${actualId.replace('live_', '')}`;
       router.push(url);
     } else if (from === 'douban' || from === 'tmdb' || (isAggregate && !actualSource && !actualId)) {
-      const url = `/play?title=${encodeURIComponent(actualTitle.trim())}${actualYear ? `&year=${actualYear}` : ''
+      // 检测当前是否在 play 页面
+      const isCurrentlyOnPlayPage = typeof window !== 'undefined' && window.location.pathname === '/play';
+
+      let url = `/play?title=${encodeURIComponent(actualTitle.trim())}${actualYear ? `&year=${actualYear}` : ''
         }${actualSearchType ? `&stype=${actualSearchType}` : ''}${isAggregate ? '&prefer=true' : ''}${actualQuery ? `&stitle=${encodeURIComponent(actualQuery.trim())}` : ''}`;
-      router.push(url);
+
+      if (isCurrentlyOnPlayPage) {
+        // 在 play 页面内，添加 _reload 参数强制刷新
+        url += `&_reload=${Date.now()}`;
+        window.location.href = url;
+      } else {
+        // 不在 play 页面，正常跳转
+        router.push(url);
+      }
     } else if (actualSource && actualId) {
-      const url = `/play?source=${actualSource}&id=${actualId}&title=${encodeURIComponent(
+      // 检测当前是否在 play 页面
+      const isCurrentlyOnPlayPage = typeof window !== 'undefined' && window.location.pathname === '/play';
+
+      let url = `/play?source=${actualSource}&id=${actualId}&title=${encodeURIComponent(
         actualTitle
       )}${actualYear ? `&year=${actualYear}` : ''}${isAggregate ? '&prefer=true' : ''
         }${actualQuery ? `&stitle=${encodeURIComponent(actualQuery.trim())}` : ''
         }${actualSearchType ? `&stype=${actualSearchType}` : ''}`;
-      router.push(url);
+
+      if (isCurrentlyOnPlayPage) {
+        // 在 play 页面内，添加 _reload 参数强制刷新
+        url += `&_reload=${Date.now()}`;
+        window.location.href = url;
+      } else {
+        // 不在 play 页面，正常跳转
+        router.push(url);
+      }
     }
   }, [
     isUpcoming,
@@ -1219,7 +1246,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
                       {config.showSourceName && source_name && !cmsData && (
                         <span
                           className={`inline-block border rounded px-1 py-0.5 text-[8px] text-white/90 bg-black/30 backdrop-blur-sm ${
-                            actualSource === 'openlist' ? 'border-yellow-500' : 'border-white/60'
+                            actualSource === 'xiaoya' ? 'border-blue-500' : actualSource === 'openlist' || actualSource === 'emby' || actualSource?.startsWith('emby_') ? 'border-yellow-500' : 'border-white/60'
                           }`}
                           style={{
                             WebkitUserSelect: 'none',
@@ -1269,7 +1296,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
                   <div className='flex items-center justify-end'>
                     <span
                       className={`inline-block border rounded px-1 py-0.5 text-[8px] text-white/90 bg-black/30 backdrop-blur-sm ${
-                        origin === 'live' ? 'border-red-500' : actualSource === 'openlist' ? 'border-yellow-500' : 'border-white/60'
+                        origin === 'live' ? 'border-red-500' : actualSource === 'openlist' || actualSource === 'emby' || actualSource?.startsWith('emby_') ? 'border-yellow-500' : 'border-white/60'
                       }`}
                       style={{
                         WebkitUserSelect: 'none',
@@ -1448,7 +1475,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
             type: actualSearchType as 'movie' | 'tv',
             currentEpisode,
           }}
-          welcomeMessage={`想了解《${actualTitle}》的更多信息吗？我可以帮你查询剧情、演员、评价等。`}
+          welcomeMessage={aiDefaultMessageWithVideo ? aiDefaultMessageWithVideo.replace('{title}', actualTitle || '') : `想了解《${actualTitle}》的更多信息吗？我可以帮你查询剧情、演员、评价等。`}
         />
       )}
 

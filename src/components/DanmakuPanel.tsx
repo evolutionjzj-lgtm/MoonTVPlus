@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getEpisodes, searchAnime } from '@/lib/danmaku/api';
 import type {
   DanmakuAnime,
+  DanmakuComment,
   DanmakuEpisode,
   DanmakuSelection,
 } from '@/lib/danmaku/types';
@@ -15,6 +16,7 @@ interface DanmakuPanelProps {
   currentEpisodeIndex: number;
   onDanmakuSelect: (selection: DanmakuSelection) => void;
   currentSelection: DanmakuSelection | null;
+  onUploadDanmaku?: (comments: DanmakuComment[]) => void;
 }
 
 export default function DanmakuPanel({
@@ -22,6 +24,7 @@ export default function DanmakuPanel({
   currentEpisodeIndex,
   onDanmakuSelect,
   currentSelection,
+  onUploadDanmaku,
 }: DanmakuPanelProps) {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<DanmakuAnime[]>([]);
@@ -31,6 +34,7 @@ export default function DanmakuPanel({
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const initializedRef = useRef(false); // 标记是否已初始化过
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 搜索弹幕
   const handleSearch = useCallback(async (keyword: string) => {
@@ -118,6 +122,38 @@ export default function DanmakuPanel({
     [currentSelection]
   );
 
+  // 处理文件上传
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.xml')) {
+      setSearchError('请上传XML格式的弹幕文件');
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const { parseXmlDanmaku } = await import('@/lib/danmaku/xml-parser');
+      const comments = parseXmlDanmaku(text);
+
+      if (comments.length === 0) {
+        setSearchError('弹幕文件解析失败或文件为空');
+        return;
+      }
+
+      onUploadDanmaku?.(comments);
+      setSearchError(null);
+    } catch (error) {
+      console.error('上传弹幕失败:', error);
+      setSearchError('弹幕文件解析失败');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [onUploadDanmaku]);
+
   // 当视频标题首次加载时，初始化搜索关键词（仅执行一次）
   useEffect(() => {
     if (videoTitle && !initializedRef.current) {
@@ -202,6 +238,11 @@ export default function DanmakuPanel({
             <p className='text-xs text-gray-600 dark:text-gray-400'>
               {currentSelection.episodeTitle}
             </p>
+            {currentSelection.danmakuCount !== undefined && (
+              <p className='mt-1 text-xs text-gray-500 dark:text-gray-500'>
+                弹幕数量: {currentSelection.danmakuCount}
+              </p>
+            )}
           </div>
         )}
 
@@ -368,7 +409,38 @@ export default function DanmakuPanel({
           </div>
         )}
         </div>
+
+        {/* 上传弹幕区域 - 移动端：在滚动容器内 */}
+        {onUploadDanmaku && (
+          <div className='mt-3 border-t border-gray-200 pt-3 dark:border-gray-700 md:hidden'>
+            <input
+              ref={fileInputRef}
+              type='file'
+              accept='.xml'
+              onChange={handleFileUpload}
+              className='hidden'
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className='w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors py-2'
+            >
+              搜不到想要的弹幕？自行上传
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* 上传弹幕区域 - PC端：固定在底部 */}
+      {onUploadDanmaku && (
+        <div className='mt-3 flex-shrink-0 border-t border-gray-200 pt-3 dark:border-gray-700 hidden md:block'>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className='w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors py-2'
+          >
+            搜不到想要的弹幕？自行上传
+          </button>
+        </div>
+      )}
     </div>
   );
 }
