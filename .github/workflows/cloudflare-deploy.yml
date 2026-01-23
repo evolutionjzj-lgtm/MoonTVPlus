@@ -52,6 +52,23 @@ jobs:
           NEXT_PUBLIC_VOICE_CHAT_STRATEGY: ${{ secrets.NEXT_PUBLIC_VOICE_CHAT_STRATEGY }}
           NEXT_PUBLIC_ENABLE_OFFLINE_DOWNLOAD: ${{ secrets.NEXT_PUBLIC_ENABLE_OFFLINE_DOWNLOAD }}
           NEXT_PUBLIC_ENABLE_SOURCE_SEARCH: ${{ secrets.NEXT_PUBLIC_ENABLE_SOURCE_SEARCH }}
+          # 运行时环境变量
+          USERNAME: ${{ secrets.USERNAME }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          UPSTASH_URL: ${{ secrets.UPSTASH_URL }}
+          UPSTASH_TOKEN: ${{ secrets.UPSTASH_TOKEN }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TMDB_PROXY: ${{ secrets.TMDB_PROXY }}
+          TMDB_REVERSE_PROXY: ${{ secrets.TMDB_REVERSE_PROXY }}
+          DANMAKU_API_BASE: ${{ secrets.DANMAKU_API_BASE }}
+          DANMAKU_API_TOKEN: ${{ secrets.DANMAKU_API_TOKEN }}
+          ANNOUNCEMENT: ${{ secrets.ANNOUNCEMENT }}
+          CRON_PASSWORD: ${{ secrets.CRON_PASSWORD }}
+          SITE_BASE: ${{ secrets.SITE_BASE }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          KVROCKS_URL: ${{ secrets.KVROCKS_URL }}
+          INIT_CONFIG: ${{ secrets.INIT_CONFIG }}
+          CONFIG_SUBSCRIPTION_URL: ${{ secrets.CONFIG_SUBSCRIPTION_URL }}
 
       - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@v3
@@ -60,53 +77,3 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
           packageManager: pnpm
-          preCommands: |
-            # 设置运行时环境变量到 Cloudflare
-            if [ -n "${{ secrets.USERNAME }}" ]; then
-              echo "${{ secrets.USERNAME }}" | wrangler secret put USERNAME
-            fi
-            if [ -n "${{ secrets.PASSWORD }}" ]; then
-              echo "${{ secrets.PASSWORD }}" | wrangler secret put PASSWORD
-            fi
-            if [ -n "${{ secrets.UPSTASH_URL }}" ]; then
-              echo "${{ secrets.UPSTASH_URL }}" | wrangler secret put UPSTASH_URL
-            fi
-            if [ -n "${{ secrets.UPSTASH_TOKEN }}" ]; then
-              echo "${{ secrets.UPSTASH_TOKEN }}" | wrangler secret put UPSTASH_TOKEN
-            fi
-            if [ -n "${{ secrets.TMDB_API_KEY }}" ]; then
-              echo "${{ secrets.TMDB_API_KEY }}" | wrangler secret put TMDB_API_KEY
-            fi
-            if [ -n "${{ secrets.TMDB_PROXY }}" ]; then
-              echo "${{ secrets.TMDB_PROXY }}" | wrangler secret put TMDB_PROXY
-            fi
-            if [ -n "${{ secrets.TMDB_REVERSE_PROXY }}" ]; then
-              echo "${{ secrets.TMDB_REVERSE_PROXY }}" | wrangler secret put TMDB_REVERSE_PROXY
-            fi
-            if [ -n "${{ secrets.DANMAKU_API_BASE }}" ]; then
-              echo "${{ secrets.DANMAKU_API_BASE }}" | wrangler secret put DANMAKU_API_BASE
-            fi
-            if [ -n "${{ secrets.DANMAKU_API_TOKEN }}" ]; then
-              echo "${{ secrets.DANMAKU_API_TOKEN }}" | wrangler secret put DANMAKU_API_TOKEN
-            fi
-            if [ -n "${{ secrets.ANNOUNCEMENT }}" ]; then
-              echo "${{ secrets.ANNOUNCEMENT }}" | wrangler secret put ANNOUNCEMENT
-            fi
-            if [ -n "${{ secrets.CRON_PASSWORD }}" ]; then
-              echo "${{ secrets.CRON_PASSWORD }}" | wrangler secret put CRON_PASSWORD
-            fi
-            if [ -n "${{ secrets.SITE_BASE }}" ]; then
-              echo "${{ secrets.SITE_BASE }}" | wrangler secret put SITE_BASE
-            fi
-            if [ -n "${{ secrets.REDIS_URL }}" ]; then
-              echo "${{ secrets.REDIS_URL }}" | wrangler secret put REDIS_URL
-            fi
-            if [ -n "${{ secrets.KVROCKS_URL }}" ]; then
-              echo "${{ secrets.KVROCKS_URL }}" | wrangler secret put KVROCKS_URL
-            fi
-            if [ -n "${{ secrets.INIT_CONFIG }}" ]; then
-              echo "${{ secrets.INIT_CONFIG }}" | wrangler secret put INIT_CONFIG
-            fi
-            if [ -n "${{ secrets.CONFIG_SUBSCRIPTION_URL }}" ]; then
-              echo "${{ secrets.CONFIG_SUBSCRIPTION_URL }}" | wrangler secret put CONFIG_SUBSCRIPTION_URL
-            fi
