@@ -22,12 +22,14 @@ export interface AdminConfig {
     // TMDB配置
     TMDBApiKey?: string;
     TMDBProxy?: string;
+    TMDBReverseProxy?: string;
     BannerDataSource?: string; // 轮播图数据源：TMDB、TX 或 Douban
     RecommendationDataSource?: string; // 更多推荐数据源：Douban、TMDB、Mixed、MixedSmart
     // Pansou配置
     PansouApiUrl?: string;
     PansouUsername?: string;
     PansouPassword?: string;
+    PansouKeywordBlocklist?: string;
     // 评论功能开关
     EnableComments: boolean;
     // 自定义去广告代码
@@ -94,6 +96,15 @@ export interface AdminConfig {
     channelNumber?: number;
     disabled?: boolean;
   }[];
+  WebLiveConfig?: {
+    key: string;
+    name: string;
+    platform: string; // 直播平台类型，如 'huya'
+    roomId: string; // 房间ID
+    from: 'config' | 'custom';
+    disabled?: boolean;
+  }[];
+  WebLiveEnabled?: boolean; // 网络直播功能总开关
   ThemeConfig?: {
     enableBuiltInTheme: boolean; // 是否启用内置主题
     builtInTheme: string; // 内置主题名称
@@ -205,6 +216,24 @@ export interface AdminConfig {
     Username?: string; // 用户名认证（备选）
     Password?: string; // 密码认证（备选）
     DisableVideoPreview?: boolean; // 禁用预览视频，直接返回直连链接
+  };
+  EmailConfig?: {
+    enabled: boolean; // 是否启用邮件通知
+    provider: 'smtp' | 'resend'; // 邮件发送方式
+    // SMTP配置
+    smtp?: {
+      host: string; // SMTP服务器地址
+      port: number; // SMTP端口（25/465/587）
+      secure: boolean; // 是否使用SSL/TLS
+      user: string; // SMTP用户名
+      password: string; // SMTP密码
+      from: string; // 发件人邮箱
+    };
+    // Resend配置
+    resend?: {
+      apiKey: string; // Resend API Key
+      from: string; // 发件人邮箱
+    };
   };
 }
 

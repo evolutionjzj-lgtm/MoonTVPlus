@@ -12,20 +12,28 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Gauge,
+  Globe,
   Home,
   KeyRound,
   LogOut,
+  Mail,
+  MessageSquare,
+  Monitor,
   MoveDown,
   MoveUp,
   Rss,
   Settings,
   Shield,
+  Sliders,
+  Smartphone,
   Star,
+  Tablet,
   User,
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
@@ -33,11 +41,11 @@ import { clearAllDanmakuCache } from '@/lib/danmaku/api';
 import { CURRENT_VERSION } from '@/lib/version';
 import { UpdateStatus } from '@/lib/version_check';
 
+import { FavoritesPanel } from './FavoritesPanel';
+import { NotificationPanel } from './NotificationPanel';
+import { OfflineDownloadPanel } from './OfflineDownloadPanel';
 import { useVersionCheck } from './VersionCheckProvider';
 import { VersionPanel } from './VersionPanel';
-import { OfflineDownloadPanel } from './OfflineDownloadPanel';
-import { NotificationPanel } from './NotificationPanel';
-import { FavoritesPanel } from './FavoritesPanel';
 
 interface AuthInfo {
   username?: string;
@@ -55,6 +63,8 @@ export const UserMenu: React.FC = () => {
   const [isOfflineDownloadPanelOpen, setIsOfflineDownloadPanelOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isFavoritesPanelOpen, setIsFavoritesPanelOpen] = useState(false);
+  const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
+  const [isDeviceManagementOpen, setIsDeviceManagementOpen] = useState(false);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [storageType, setStorageType] = useState<string>('localstorage');
   const [mounted, setMounted] = useState(false);
@@ -68,7 +78,7 @@ export const UserMenu: React.FC = () => {
 
   // Body 滚动锁定 - 使用 overflow 方式避免布局问题
   useEffect(() => {
-    if (isSettingsOpen || isChangePasswordOpen || isSubscribeOpen || isOfflineDownloadPanelOpen) {
+    if (isSettingsOpen || isChangePasswordOpen || isSubscribeOpen || isOfflineDownloadPanelOpen || isEmailSettingsOpen || isDeviceManagementOpen) {
       const body = document.body;
       const html = document.documentElement;
 
@@ -87,12 +97,13 @@ export const UserMenu: React.FC = () => {
         html.style.overflow = originalHtmlOverflow;
       };
     }
-  }, [isSettingsOpen, isChangePasswordOpen, isSubscribeOpen, isOfflineDownloadPanelOpen]);
+  }, [isSettingsOpen, isChangePasswordOpen, isSubscribeOpen, isOfflineDownloadPanelOpen, isEmailSettingsOpen, isDeviceManagementOpen]);
 
   // 设置相关状态
   const [defaultAggregateSearch, setDefaultAggregateSearch] = useState(true);
   const [doubanProxyUrl, setDoubanProxyUrl] = useState('');
   const [enableOptimization, setEnableOptimization] = useState(true);
+  const [speedTestTimeout, setSpeedTestTimeout] = useState(4000); // 测速超时时间（毫秒）
   const [fluidSearch, setFluidSearch] = useState(true);
   const [liveDirectConnect, setLiveDirectConnect] = useState(false);
   const [tmdbBackdropDisabled, setTmdbBackdropDisabled] = useState(false);
@@ -106,10 +117,40 @@ export const UserMenu: React.FC = () => {
   const [bufferStrategy, setBufferStrategy] = useState('medium');
   const [nextEpisodePreCache, setNextEpisodePreCache] = useState(true);
   const [nextEpisodeDanmakuPreload, setNextEpisodeDanmakuPreload] = useState(true);
+  const [disableAutoLoadDanmaku, setDisableAutoLoadDanmaku] = useState(false);
+  const [danmakuMaxCount, setDanmakuMaxCount] = useState(0);
+  const [danmakuHeatmapDisabled, setDanmakuHeatmapDisabled] = useState(false);
   const [searchTraditionalToSimplified, setSearchTraditionalToSimplified] = useState(false);
+
+  // 邮件通知设置
+  const [userEmail, setUserEmail] = useState('');
+  const [emailNotifications, setEmailNotifications] = useState(false);
+  const [emailSettingsLoading, setEmailSettingsLoading] = useState(false);
+  const [emailSettingsSaving, setEmailSettingsSaving] = useState(false);
+
+  // 设备管理状态
+  const [devices, setDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+
+  // 确认对话框状态
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // 折叠面板状态
   const [isDoubanSectionOpen, setIsDoubanSectionOpen] = useState(true);
+
+  // TMDB 图片设置
+  const [tmdbImageBaseUrl, setTmdbImageBaseUrl] = useState('https://image.tmdb.org');
   const [isUsageSectionOpen, setIsUsageSectionOpen] = useState(false);
   const [isBufferSectionOpen, setIsBufferSectionOpen] = useState(false);
   const [isDanmakuSectionOpen, setIsDanmakuSectionOpen] = useState(false);
@@ -154,6 +195,7 @@ export const UserMenu: React.FC = () => {
       label: '豆瓣 CDN By CMLiussss（腾讯云）',
     },
     { value: 'cmliussss-cdn-ali', label: '豆瓣 CDN By CMLiussss（阿里云）' },
+    { value: 'baidu', label: '百度图片代理' },
     { value: 'custom', label: '自定义代理' },
     { value: 'direct', label: '直连（浏览器直接请求豆瓣，可能需要浏览器插件才能正常显示）' },
     { value: 'img3', label: '豆瓣官方精品 CDN（阿里云，可能需要浏览器插件才能正常显示）' },
@@ -255,10 +297,11 @@ export const UserMenu: React.FC = () => {
   }, []);
 
   // 懒加载订阅 URL - 只在打开订阅面板时请求
-  const fetchSubscribeUrl = async () => {
+  const fetchSubscribeUrl = async (adFilter?: boolean) => {
     try {
       const currentOrigin = window.location.origin;
-      const response = await fetch(`/api/tvbox/config?origin=${encodeURIComponent(currentOrigin)}&adFilter=${adFilterEnabled}`);
+      const filterValue = adFilter !== undefined ? adFilter : adFilterEnabled;
+      const response = await fetch(`/api/tvbox/config?origin=${encodeURIComponent(currentOrigin)}&adFilter=${filterValue}`);
       if (response.ok) {
         const data = await response.json();
         setSubscribeUrl(data.url);
@@ -330,10 +373,20 @@ export const UserMenu: React.FC = () => {
         setDoubanImageProxyUrl(defaultDoubanImageProxyUrl);
       }
 
+      const savedTmdbImageBaseUrl = localStorage.getItem('tmdbImageBaseUrl');
+      if (savedTmdbImageBaseUrl !== null) {
+        setTmdbImageBaseUrl(savedTmdbImageBaseUrl);
+      }
+
       const savedEnableOptimization =
         localStorage.getItem('enableOptimization');
       if (savedEnableOptimization !== null) {
         setEnableOptimization(JSON.parse(savedEnableOptimization));
+      }
+
+      const savedSpeedTestTimeout = localStorage.getItem('speedTestTimeout');
+      if (savedSpeedTestTimeout !== null) {
+        setSpeedTestTimeout(Number(savedSpeedTestTimeout));
       }
 
       const savedFluidSearch = localStorage.getItem('fluidSearch');
@@ -375,6 +428,21 @@ export const UserMenu: React.FC = () => {
         setNextEpisodeDanmakuPreload(savedNextEpisodeDanmakuPreload === 'true');
       }
 
+      const savedDisableAutoLoadDanmaku = localStorage.getItem('disableAutoLoadDanmaku');
+      if (savedDisableAutoLoadDanmaku !== null) {
+        setDisableAutoLoadDanmaku(savedDisableAutoLoadDanmaku === 'true');
+      }
+
+      const savedDanmakuMaxCount = localStorage.getItem('danmakuMaxCount');
+      if (savedDanmakuMaxCount !== null) {
+        setDanmakuMaxCount(parseInt(savedDanmakuMaxCount, 10));
+      }
+
+      const savedDanmakuHeatmapDisabled = localStorage.getItem('danmaku_heatmap_disabled');
+      if (savedDanmakuHeatmapDisabled !== null) {
+        setDanmakuHeatmapDisabled(savedDanmakuHeatmapDisabled === 'true');
+      }
+
       // 加载首页模块配置
       const savedHomeModules = localStorage.getItem('homeModules');
       if (savedHomeModules !== null) {
@@ -392,6 +460,157 @@ export const UserMenu: React.FC = () => {
       }
     }
   }, []);
+
+  // 加载邮件通知设置
+  const loadEmailSettings = async () => {
+    setEmailSettingsLoading(true);
+    try {
+      const response = await fetch('/api/user/email-settings');
+      if (response.ok) {
+        const data = await response.json();
+        setUserEmail(data.email || '');
+        setEmailNotifications(data.emailNotifications || false);
+      }
+    } catch (error) {
+      console.error('加载邮件设置失败:', error);
+    } finally {
+      setEmailSettingsLoading(false);
+    }
+  };
+
+  // 保存邮件通知设置
+  const handleSaveEmailSettings = async () => {
+    setEmailSettingsSaving(true);
+    try {
+      const response = await fetch('/api/user/email-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          emailNotifications,
+        }),
+      });
+
+      const messageEl = document.getElementById('email-settings-message');
+      if (response.ok) {
+        if (messageEl) {
+          messageEl.textContent = '保存成功！';
+          messageEl.className = 'text-xs text-center text-green-600 dark:text-green-400';
+          messageEl.classList.remove('hidden');
+          setTimeout(() => {
+            messageEl.classList.add('hidden');
+          }, 3000);
+        }
+      } else {
+        const data = await response.json();
+        if (messageEl) {
+          messageEl.textContent = data.error || '保存失败';
+          messageEl.className = 'text-xs text-center text-red-600 dark:text-red-400';
+          messageEl.classList.remove('hidden');
+        }
+      }
+    } catch (error) {
+      console.error('保存邮件设置失败:', error);
+      const messageEl = document.getElementById('email-settings-message');
+      if (messageEl) {
+        messageEl.textContent = '保存失败，请重试';
+        messageEl.className = 'text-xs text-center text-red-600 dark:text-red-400';
+        messageEl.classList.remove('hidden');
+      }
+    } finally {
+      setEmailSettingsSaving(false);
+    }
+  };
+
+  // 加载设备列表
+  const loadDevices = async () => {
+    setDevicesLoading(true);
+    try {
+      const response = await fetch('/api/auth/devices');
+      if (response.ok) {
+        const data = await response.json();
+        setDevices(data.devices || []);
+      }
+    } catch (error) {
+      console.error('加载设备列表失败:', error);
+    } finally {
+      setDevicesLoading(false);
+    }
+  };
+
+  // 撤销单个设备
+  const handleRevokeDevice = async (tokenId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '撤销设备登录',
+      message: '确定要撤销该设备的登录吗？',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setRevoking(tokenId);
+        try {
+          const response = await fetch('/api/auth/devices', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenId }),
+          });
+
+          if (response.ok) {
+            // 重新加载设备列表
+            await loadDevices();
+          } else {
+            alert('撤销失败，请重试');
+          }
+        } catch (error) {
+          console.error('撤销设备失败:', error);
+          alert('撤销失败，请重试');
+        } finally {
+          setRevoking(null);
+        }
+      },
+    });
+  };
+
+  // 撤销所有设备
+  const handleRevokeAllDevices = async () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '登出所有设备',
+      message: '确定要登出所有设备吗？这将清除所有设备的登录状态（包括当前设备）。',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        try {
+          const response = await fetch('/api/auth/devices', {
+            method: 'POST',
+          });
+
+          if (response.ok) {
+            // 登出所有设备后，重定向到首页
+            window.location.href = '/';
+          } else {
+            alert('操作失败，请重试');
+          }
+        } catch (error) {
+          console.error('登出所有设备失败:', error);
+          alert('操作失败，请重试');
+        }
+      },
+    });
+  };
+
+  // 根据设备类型返回对应的图标
+  const getDeviceIcon = (deviceInfo: string) => {
+    const info = deviceInfo.toLowerCase();
+
+    if (info.includes('mobile') || info.includes('iphone') || info.includes('android')) {
+      return Smartphone;
+    }
+
+    if (info.includes('tablet') || info.includes('ipad')) {
+      return Tablet;
+    }
+
+    return Monitor;
+  };
 
   // 点击外部区域关闭下拉框
   useEffect(() => {
@@ -482,8 +701,8 @@ export const UserMenu: React.FC = () => {
 
   const handleAdFilterToggle = async (checked: boolean) => {
     setAdFilterEnabled(checked);
-    // 当去广告开关改变时,重新获取订阅URL
-    await fetchSubscribeUrl();
+    // 当去广告开关改变时,重新获取订阅URL，传入新的值
+    await fetchSubscribeUrl(checked);
   };
 
   const handleCopySubscribeUrl = async () => {
@@ -573,6 +792,13 @@ export const UserMenu: React.FC = () => {
     }
   };
 
+  const handleSpeedTestTimeoutChange = (value: number) => {
+    setSpeedTestTimeout(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('speedTestTimeout', String(value));
+    }
+  };
+
   const handleFluidSearchToggle = (value: boolean) => {
     setFluidSearch(value);
     if (typeof window !== 'undefined') {
@@ -622,6 +848,13 @@ export const UserMenu: React.FC = () => {
     }
   };
 
+  const handleTmdbImageBaseUrlChange = (value: string) => {
+    setTmdbImageBaseUrl(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tmdbImageBaseUrl', value);
+    }
+  };
+
   const handleBufferStrategyChange = (value: string) => {
     setBufferStrategy(value);
     if (typeof window !== 'undefined') {
@@ -653,6 +886,27 @@ export const UserMenu: React.FC = () => {
     setNextEpisodeDanmakuPreload(value);
     if (typeof window !== 'undefined') {
       localStorage.setItem('nextEpisodeDanmakuPreload', String(value));
+    }
+  };
+
+  const handleDisableAutoLoadDanmakuToggle = (value: boolean) => {
+    setDisableAutoLoadDanmaku(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('disableAutoLoadDanmaku', String(value));
+    }
+  };
+
+  const handleDanmakuMaxCountChange = (value: number) => {
+    setDanmakuMaxCount(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('danmakuMaxCount', String(value));
+    }
+  };
+
+  const handleDanmakuHeatmapDisabledToggle = (value: boolean) => {
+    setDanmakuHeatmapDisabled(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('danmaku_heatmap_disabled', String(value));
     }
   };
 
@@ -751,9 +1005,11 @@ export const UserMenu: React.FC = () => {
     setDoubanDataSource(defaultDoubanProxyType);
     setDoubanImageProxyType(defaultDoubanImageProxyType);
     setDoubanImageProxyUrl(defaultDoubanImageProxyUrl);
+    setTmdbImageBaseUrl('https://image.tmdb.org');
     setBufferStrategy('medium');
     setNextEpisodePreCache(true);
     setNextEpisodeDanmakuPreload(true);
+    setDisableAutoLoadDanmaku(false);
     setHomeModules(defaultHomeModules);
     setSearchTraditionalToSimplified(false);
 
@@ -768,9 +1024,13 @@ export const UserMenu: React.FC = () => {
       localStorage.setItem('doubanDataSource', defaultDoubanProxyType);
       localStorage.setItem('doubanImageProxyType', defaultDoubanImageProxyType);
       localStorage.setItem('doubanImageProxyUrl', defaultDoubanImageProxyUrl);
+      localStorage.setItem('tmdbImageBaseUrl', 'https://image.tmdb.org');
       localStorage.setItem('bufferStrategy', 'medium');
       localStorage.setItem('nextEpisodePreCache', 'true');
       localStorage.setItem('nextEpisodeDanmakuPreload', 'true');
+      localStorage.setItem('disableAutoLoadDanmaku', 'false');
+      localStorage.setItem('danmakuMaxCount', '0');
+      localStorage.setItem('danmaku_heatmap_disabled', 'false');
       localStorage.setItem('homeModules', JSON.stringify(defaultHomeModules));
       localStorage.setItem('searchTraditionalToSimplified', 'false');
       window.dispatchEvent(new CustomEvent('homeModulesUpdated'));
@@ -806,7 +1066,8 @@ export const UserMenu: React.FC = () => {
 
   // 检查是否显示管理面板按钮
   const showAdminPanel =
-    authInfo?.role === 'owner' || authInfo?.role === 'admin';
+    (authInfo?.role === 'owner' || authInfo?.role === 'admin') &&
+    storageType !== 'localstorage';
 
   // 检查是否显示离线下载按钮
   const showOfflineDownload =
@@ -847,9 +1108,41 @@ export const UserMenu: React.FC = () => {
         <div className='px-3 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-800 dark:to-gray-800/50'>
           <div className='space-y-1'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                当前用户
-              </span>
+              <div className='flex items-center gap-0.5'>
+                <span className='text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                  当前用户
+                </span>
+                {/* 邮件设置图标按钮 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                    setIsEmailSettingsOpen(true);
+                    // 懒加载:打开面板时才请求邮件设置
+                    loadEmailSettings();
+                  }}
+                  className='p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors'
+                  title='邮件通知设置'
+                >
+                  <Mail className='w-3 h-3 text-gray-500 dark:text-gray-400' />
+                </button>
+                {/* 设备管理图标按钮 */}
+                {storageType !== 'localstorage' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpen(false);
+                      setIsDeviceManagementOpen(true);
+                      // 懒加载:打开面板时才请求设备列表
+                      loadDevices();
+                    }}
+                    className='p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors'
+                    title='设备管理'
+                  >
+                    <Monitor className='w-3 h-3 text-gray-500 dark:text-gray-400' />
+                  </button>
+                )}
+              </div>
               <span
                 className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${(authInfo?.role || 'user') === 'owner'
                   ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
@@ -1068,9 +1361,12 @@ export const UserMenu: React.FC = () => {
                 onClick={() => setIsDoubanSectionOpen(!isDoubanSectionOpen)}
                 className='w-full px-3 py-2.5 md:px-4 md:py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center justify-between'
               >
-                <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
-                  豆瓣设置
-                </h3>
+                <div className='flex items-center gap-2'>
+                  <Globe className='w-5 h-5 text-gray-600 dark:text-gray-400' />
+                  <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
+                    网络设置
+                  </h3>
+                </div>
                 {isDoubanSectionOpen ? (
                   <ChevronUp className='w-5 h-5 text-gray-600 dark:text-gray-400' />
                 ) : (
@@ -1286,6 +1582,30 @@ export const UserMenu: React.FC = () => {
                       />
                     </div>
                   )}
+
+                  {/* 分割线 */}
+                  <div className='border-t border-gray-200 dark:border-gray-700'></div>
+
+                  {/* TMDB 图片网络请求地址设置 */}
+                  <div className='space-y-3'>
+                    <div>
+                      <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                        TMDB 图片网络请求地址
+                      </h4>
+                      <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                        TMDB 图片的 Base URL（默认: https://image.tmdb.org）
+                      </p>
+                    </div>
+                    <input
+                      type='text'
+                      className='w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 shadow-sm hover:border-gray-400 dark:hover:border-gray-500'
+                      placeholder='例如: https://image.tmdb.org'
+                      value={tmdbImageBaseUrl}
+                      onChange={(e) =>
+                        handleTmdbImageBaseUrlChange(e.target.value)
+                      }
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1295,9 +1615,12 @@ export const UserMenu: React.FC = () => {
                 onClick={() => setIsUsageSectionOpen(!isUsageSectionOpen)}
                 className='w-full px-3 py-2.5 md:px-4 md:py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center justify-between'
               >
-                <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
-                  通用设置
-                </h3>
+                <div className='flex items-center gap-2'>
+                  <Sliders className='w-5 h-5 text-gray-600 dark:text-gray-400' />
+                  <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
+                    通用设置
+                  </h3>
+                </div>
                 {isUsageSectionOpen ? (
                   <ChevronUp className='w-5 h-5 text-gray-600 dark:text-gray-400' />
                 ) : (
@@ -1353,6 +1676,63 @@ export const UserMenu: React.FC = () => {
                       </div>
                     </label>
                   </div>
+
+                  {/* 测速超时设置 */}
+                  {enableOptimization && (
+                    <div className='ml-4 mt-2 space-y-2'>
+                      <div className='flex items-center justify-between'>
+                        <span className='text-xs text-gray-600 dark:text-gray-400'>
+                          换源面板测速超时
+                        </span>
+                        <span className='text-xs font-medium text-gray-700 dark:text-gray-300'>
+                          {speedTestTimeout / 1000}秒
+                        </span>
+                      </div>
+                      <div className='flex items-center gap-2'>
+                        <input
+                          type='range'
+                          min='4000'
+                          max='30000'
+                          step='1000'
+                          value={speedTestTimeout}
+                          onChange={(e) => handleSpeedTestTimeoutChange(Number(e.target.value))}
+                          className='flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700'
+                          style={{
+                            background: `linear-gradient(to right, #10b981 0%, #10b981 ${((speedTestTimeout - 4000) / (30000 - 4000)) * 100}%, #e5e7eb ${((speedTestTimeout - 4000) / (30000 - 4000)) * 100}%, #e5e7eb 100%)`
+                          }}
+                        />
+                      </div>
+                      <div className='flex justify-between text-xs text-gray-500 dark:text-gray-400'>
+                        <button
+                          onClick={() => handleSpeedTestTimeoutChange(4000)}
+                          className={`px-2 py-0.5 rounded ${speedTestTimeout === 4000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        >
+                          4秒
+                        </button>
+                        <button
+                          onClick={() => handleSpeedTestTimeoutChange(10000)}
+                          className={`px-2 py-0.5 rounded ${speedTestTimeout === 10000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        >
+                          10秒
+                        </button>
+                        <button
+                          onClick={() => handleSpeedTestTimeoutChange(20000)}
+                          className={`px-2 py-0.5 rounded ${speedTestTimeout === 20000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        >
+                          20秒
+                        </button>
+                        <button
+                          onClick={() => handleSpeedTestTimeoutChange(30000)}
+                          className={`px-2 py-0.5 rounded ${speedTestTimeout === 30000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        >
+                          30秒
+                        </button>
+                      </div>
+                      <p className='text-xs text-gray-500 dark:text-gray-400 italic'>
+                        注：此设置仅对换源面板测速生效，优选播放源时仍使用4秒超时
+                      </p>
+                    </div>
+                  )}
 
                   {/* 流式搜索 */}
                   <div className='flex items-center justify-between'>
@@ -1483,9 +1863,12 @@ export const UserMenu: React.FC = () => {
                 onClick={() => setIsBufferSectionOpen(!isBufferSectionOpen)}
                 className='w-full px-3 py-2.5 md:px-4 md:py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center justify-between'
               >
-                <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
-                  缓冲设置
-                </h3>
+                <div className='flex items-center gap-2'>
+                  <Gauge className='w-5 h-5 text-gray-600 dark:text-gray-400' />
+                  <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
+                    缓冲设置
+                  </h3>
+                </div>
                 {isBufferSectionOpen ? (
                   <ChevronUp className='w-5 h-5 text-gray-600 dark:text-gray-400' />
                 ) : (
@@ -1590,9 +1973,12 @@ export const UserMenu: React.FC = () => {
                 onClick={() => setIsDanmakuSectionOpen(!isDanmakuSectionOpen)}
                 className='w-full px-3 py-2.5 md:px-4 md:py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center justify-between'
               >
-                <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
-                  弹幕设置
-                </h3>
+                <div className='flex items-center gap-2'>
+                  <MessageSquare className='w-5 h-5 text-gray-600 dark:text-gray-400' />
+                  <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
+                    弹幕设置
+                  </h3>
+                </div>
                 {isDanmakuSectionOpen ? (
                   <ChevronUp className='w-5 h-5 text-gray-600 dark:text-gray-400' />
                 ) : (
@@ -1601,6 +1987,30 @@ export const UserMenu: React.FC = () => {
               </button>
               {isDanmakuSectionOpen && (
                 <div className='p-3 md:p-4 space-y-4 md:space-y-6'>
+                  {/* 禁用自动装填弹幕 */}
+                  <div className='flex items-center justify-between'>
+                    <div>
+                      <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                        禁用自动装填弹幕
+                      </h4>
+                      <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                        开启后，播放页面不会自动匹配弹幕，只能手动匹配
+                      </p>
+                    </div>
+                    <label className='flex items-center cursor-pointer'>
+                      <div className='relative'>
+                        <input
+                          type='checkbox'
+                          className='sr-only peer'
+                          checked={disableAutoLoadDanmaku}
+                          onChange={(e) => handleDisableAutoLoadDanmakuToggle(e.target.checked)}
+                        />
+                        <div className='w-11 h-6 bg-gray-300 rounded-full peer-checked:bg-green-500 transition-colors dark:bg-gray-600'></div>
+                        <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* 下集弹幕预加载 */}
                   <div className='flex items-center justify-between'>
                     <div>
@@ -1623,6 +2033,89 @@ export const UserMenu: React.FC = () => {
                         <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
                       </div>
                     </label>
+                  </div>
+
+                  {/* 禁用弹幕热力图 */}
+                  <div className='flex items-center justify-between'>
+                    <div>
+                      <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                        禁用弹幕热力图
+                      </h4>
+                      <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                        开启后不显示弹幕热力图和热力图开关
+                      </p>
+                    </div>
+                    <label className='flex items-center cursor-pointer'>
+                      <div className='relative'>
+                        <input
+                          type='checkbox'
+                          className='sr-only peer'
+                          checked={danmakuHeatmapDisabled}
+                          onChange={(e) => handleDanmakuHeatmapDisabledToggle(e.target.checked)}
+                        />
+                        <div className='w-11 h-6 bg-gray-300 rounded-full peer-checked:bg-green-500 transition-colors dark:bg-gray-600'></div>
+                        <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* 弹幕加载上限 */}
+                  <div className='space-y-2'>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-xs text-gray-600 dark:text-gray-400'>
+                        弹幕加载上限
+                      </span>
+                      <span className='text-xs font-medium text-gray-700 dark:text-gray-300'>
+                        {danmakuMaxCount === 0 ? '无上限' : `${danmakuMaxCount} 条`}
+                      </span>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      <input
+                        type='range'
+                        min='0'
+                        max='10000'
+                        step='100'
+                        value={danmakuMaxCount}
+                        onChange={(e) => handleDanmakuMaxCountChange(parseInt(e.target.value))}
+                        className='flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700'
+                        style={{
+                          background: `linear-gradient(to right, #10b981 0%, #10b981 ${(danmakuMaxCount / 10000) * 100}%, #e5e7eb ${(danmakuMaxCount / 10000) * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className='relative text-xs text-gray-500 dark:text-gray-400' style={{ height: '24px' }}>
+                      <button
+                        onClick={() => handleDanmakuMaxCountChange(0)}
+                        className={`absolute px-2 py-0.5 rounded ${danmakuMaxCount === 0 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        style={{ left: '0%', transform: 'translateX(0%)' }}
+                      >
+                        无上限
+                      </button>
+                      <button
+                        onClick={() => handleDanmakuMaxCountChange(3000)}
+                        className={`absolute px-2 py-0.5 rounded ${danmakuMaxCount === 3000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        style={{ left: '30%', transform: 'translateX(-50%)' }}
+                      >
+                        3000
+                      </button>
+                      <button
+                        onClick={() => handleDanmakuMaxCountChange(5000)}
+                        className={`absolute px-2 py-0.5 rounded ${danmakuMaxCount === 5000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        style={{ left: '50%', transform: 'translateX(-50%)' }}
+                      >
+                        5000
+                      </button>
+                      <button
+                        onClick={() => handleDanmakuMaxCountChange(10000)}
+                        className={`absolute px-2 py-0.5 rounded ${danmakuMaxCount === 10000 ? 'bg-green-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        style={{ left: '100%', transform: 'translateX(-100%)' }}
+                      >
+                        10000
+                      </button>
+                    </div>
+                    <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                      限制加载的弹幕数量，减少性能消耗
+                    </p>
                   </div>
 
                   {/* 清除弹幕缓存 */}
@@ -1676,9 +2169,12 @@ export const UserMenu: React.FC = () => {
                 onClick={() => setIsHomepageSectionOpen(!isHomepageSectionOpen)}
                 className='w-full px-3 py-2.5 md:px-4 md:py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center justify-between'
               >
-                <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
-                  首页设置
-                </h3>
+                <div className='flex items-center gap-2'>
+                  <Home className='w-5 h-5 text-gray-600 dark:text-gray-400' />
+                  <h3 className='text-base font-semibold text-gray-800 dark:text-gray-200'>
+                    首页设置
+                  </h3>
+                </div>
                 {isHomepageSectionOpen ? (
                   <ChevronUp className='w-5 h-5 text-gray-600 dark:text-gray-400' />
                 ) : (
@@ -2007,6 +2503,266 @@ export const UserMenu: React.FC = () => {
     </>
   );
 
+  // 邮件设置面板内容
+  const emailSettingsPanel = (
+    <>
+      {/* 背景遮罩 */}
+      <div
+        className='fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]'
+        onClick={() => setIsEmailSettingsOpen(false)}
+        onTouchMove={(e) => {
+          e.preventDefault();
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+        }}
+        style={{
+          touchAction: 'none',
+        }}
+      />
+
+      {/* 邮件设置面板 */}
+      <div
+        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] overflow-hidden'
+      >
+        <div
+          className='h-full p-6'
+          data-panel-content
+          onTouchMove={(e) => {
+            e.stopPropagation();
+          }}
+          style={{
+            touchAction: 'auto',
+          }}
+        >
+          {/* 标题栏 */}
+          <div className='flex items-center justify-between mb-6'>
+            <h3 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+              邮件通知设置
+            </h3>
+            <button
+              onClick={() => setIsEmailSettingsOpen(false)}
+              className='w-8 h-8 p-1 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
+              aria-label='Close'
+            >
+              <X className='w-full h-full' />
+            </button>
+          </div>
+
+          {/* 表单 */}
+          {emailSettingsLoading ? (
+            <div className='space-y-4'>
+              {/* 加载骨架屏 */}
+              <div className='animate-pulse'>
+                <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded w-20 mb-2'></div>
+                <div className='h-10 bg-gray-200 dark:bg-gray-700 rounded'></div>
+              </div>
+              <div className='animate-pulse'>
+                <div className='h-20 bg-gray-200 dark:bg-gray-700 rounded'></div>
+              </div>
+              <div className='animate-pulse'>
+                <div className='h-10 bg-gray-200 dark:bg-gray-700 rounded'></div>
+              </div>
+              <div className='text-center text-sm text-gray-500 dark:text-gray-400'>
+                加载中...
+              </div>
+            </div>
+          ) : (
+            <div className='space-y-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+                  邮箱地址
+                </label>
+                <input
+                  type='email'
+                  value={userEmail}
+                  onChange={(e) => setUserEmail(e.target.value)}
+                  placeholder='输入您的邮箱地址'
+                  disabled={emailSettingsSaving}
+                  className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed'
+                />
+              </div>
+
+              <div className='flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg'>
+                <div>
+                  <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                    接收收藏更新通知
+                  </h4>
+                  <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                    当收藏的影片有更新时发送邮件通知
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEmailNotifications(!emailNotifications)}
+                  disabled={emailSettingsSaving}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    emailNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      emailNotifications ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <button
+                onClick={handleSaveEmailSettings}
+                disabled={emailSettingsSaving}
+                className='w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 dark:disabled:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                {emailSettingsSaving ? (
+                  <>
+                    <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+                    <span>保存中...</span>
+                  </>
+                ) : (
+                  '保存设置'
+                )}
+              </button>
+
+              <p id='email-settings-message' className='text-xs text-center hidden'></p>
+            </div>
+          )}
+
+          {/* 提示信息 */}
+          <div className='mt-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg'>
+            <p className='text-xs text-blue-800 dark:text-blue-200'>
+              💡 提示：需要管理员先在管理面板中配置邮件服务
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  // 设备管理面板内容
+  const deviceManagementPanel = (
+    <>
+      {/* 背景遮罩 */}
+      <div
+        className='fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]'
+        onClick={() => setIsDeviceManagementOpen(false)}
+        onTouchMove={(e) => {
+          e.preventDefault();
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+        }}
+        style={{
+          touchAction: 'none',
+        }}
+      />
+
+      {/* 设备管理面板 */}
+      <div
+        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] overflow-hidden'
+      >
+        <div
+          className='h-full max-h-[80vh] flex flex-col'
+          data-panel-content
+          onTouchMove={(e) => {
+            e.stopPropagation();
+          }}
+          style={{
+            touchAction: 'auto',
+          }}
+        >
+          {/* 标题栏 */}
+          <div className='flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700'>
+            <h3 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+              设备管理
+            </h3>
+            <button
+              onClick={() => setIsDeviceManagementOpen(false)}
+              className='w-8 h-8 p-1 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
+              aria-label='Close'
+            >
+              <X className='w-full h-full' />
+            </button>
+          </div>
+
+          {/* 设备列表 */}
+          <div className='flex-1 overflow-y-auto p-6'>
+            {devicesLoading ? (
+              <div className='space-y-3'>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className='animate-pulse'>
+                    <div className='h-20 bg-gray-200 dark:bg-gray-700 rounded-lg'></div>
+                  </div>
+                ))}
+                <div className='text-center text-sm text-gray-500 dark:text-gray-400 mt-4'>
+                  加载中...
+                </div>
+              </div>
+            ) : devices.length === 0 ? (
+              <div className='text-center py-8'>
+                <Monitor className='w-12 h-12 mx-auto text-gray-400 dark:text-gray-500 mb-3' />
+                <p className='text-sm text-gray-500 dark:text-gray-400'>暂无登录设备</p>
+              </div>
+            ) : (
+              <div className='space-y-3'>
+                {devices.map((device) => {
+                  const DeviceIcon = getDeviceIcon(device.deviceInfo);
+                  return (
+                    <div
+                      key={device.tokenId}
+                      className='p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'
+                    >
+                      <div className='flex items-start justify-between'>
+                        <div className='flex-1'>
+                          <div className='flex items-center gap-2 mb-2'>
+                            <DeviceIcon className='w-4 h-4 text-gray-600 dark:text-gray-400' />
+                            <span className='text-sm font-medium text-gray-900 dark:text-gray-100'>
+                              {device.deviceInfo}
+                            </span>
+                            {device.isCurrent && (
+                              <span className='px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-full'>
+                                当前设备
+                              </span>
+                            )}
+                          </div>
+                          <div className='space-y-1 text-xs text-gray-500 dark:text-gray-400'>
+                            <div>登录时间: {new Date(device.createdAt).toLocaleString('zh-CN')}</div>
+                            <div>最后活跃: {new Date(device.lastUsed).toLocaleString('zh-CN')}</div>
+                          </div>
+                        </div>
+                        {!device.isCurrent && (
+                          <button
+                            onClick={() => handleRevokeDevice(device.tokenId)}
+                            disabled={revoking === device.tokenId}
+                            className='ml-3 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border border-red-200 hover:border-red-300 dark:border-red-800 dark:hover:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                          >
+                            {revoking === device.tokenId ? '撤销中...' : '撤销'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 底部操作 */}
+          <div className='p-6 border-t border-gray-200 dark:border-gray-700 space-y-3'>
+            <button
+              onClick={handleRevokeAllDevices}
+              disabled={devices.length === 0}
+              className='w-full px-4 py-2.5 bg-red-500 hover:bg-red-600 disabled:bg-red-400 dark:bg-red-600 dark:hover:bg-red-700 dark:disabled:bg-red-500 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed'
+            >
+              登出所有设备
+            </button>
+            <p className='text-xs text-gray-500 dark:text-gray-400 text-center'>
+              登出所有设备后需要重新登录
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <>
       <div className='relative'>
@@ -2077,6 +2833,56 @@ export const UserMenu: React.FC = () => {
             isOpen={isFavoritesPanelOpen}
             onClose={() => setIsFavoritesPanelOpen(false)}
           />,
+          document.body
+        )}
+
+      {/* 使用 Portal 将邮件设置面板渲染到 document.body */}
+      {isEmailSettingsOpen &&
+        mounted &&
+        createPortal(emailSettingsPanel, document.body)}
+
+      {/* 使用 Portal 将设备管理面板渲染到 document.body */}
+      {isDeviceManagementOpen &&
+        mounted &&
+        createPortal(deviceManagementPanel, document.body)}
+
+      {/* 确认对话框 */}
+      {confirmDialog.isOpen &&
+        mounted &&
+        createPortal(
+          <div className='fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm'>
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md m-4'>
+              {/* 标题 */}
+              <div className='p-6 border-b border-gray-200 dark:border-gray-700'>
+                <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
+                  {confirmDialog.title}
+                </h3>
+              </div>
+
+              {/* 内容 */}
+              <div className='p-6'>
+                <p className='text-gray-700 dark:text-gray-300'>
+                  {confirmDialog.message}
+                </p>
+              </div>
+
+              {/* 按钮 */}
+              <div className='p-6 pt-0 flex gap-3 justify-end'>
+                <button
+                  onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                  className='px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors'
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className='px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 rounded-lg transition-colors'
+                >
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>,
           document.body
         )}
     </>

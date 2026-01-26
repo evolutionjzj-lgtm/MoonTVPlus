@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { getTMDBImageUrl, getGenreNames, type TMDBItem } from '@/lib/tmdb.client';
+import { useCallback, useEffect, useRef,useState } from 'react';
+
+import { type TMDBItem,getGenreNames, getTMDBImageUrl } from '@/lib/tmdb.client';
 import { processImageUrl } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 
 interface BannerCarouselProps {
   autoPlayInterval?: number; // 自动播放间隔（毫秒）
@@ -53,8 +54,8 @@ export default function BannerCarousel({ autoPlayInterval = 5000 }: BannerCarous
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return processImageUrl(path);
     }
-    // 否则使用TMDB的URL拼接
-    return getTMDBImageUrl(path, 'original');
+    // 否则使用TMDB的URL拼接，并通过processImageUrl处理
+    return processImageUrl(getTMDBImageUrl(path, 'original'));
   };
 
   // 获取视频URL（处理豆瓣视频代理）

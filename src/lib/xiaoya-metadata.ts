@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { XiaoyaClient } from './xiaoya.client';
-import { parseNFO, NFOMetadata } from './nfo-parser';
+import { NFOMetadata,parseNFO } from './nfo-parser';
 import { parseVideoFileName } from './video-parser';
+import { XiaoyaClient } from './xiaoya.client';
 
 export interface XiaoyaMetadata {
   tmdbId?: number;
@@ -99,7 +99,8 @@ export async function getXiaoyaMetadata(
   xiaoyaClient: XiaoyaClient,
   videoPath: string,
   tmdbApiKey?: string,
-  tmdbProxy?: string
+  tmdbProxy?: string,
+  tmdbReverseProxy?: string
 ): Promise<XiaoyaMetadata> {
   const pathParts = videoPath.split('/').filter(Boolean);
 
@@ -207,7 +208,7 @@ export async function getXiaoyaMetadata(
     const fileName = pathParts[pathParts.length - 1];
     const searchQuery = fileName
       .replace(/\.(mp4|mkv|avi|m3u8|flv|ts)$/i, '')
-      .replace(/[\[\]()]/g, ' ')
+      .replace(/[[\]()]/g, ' ')
       .trim();
 
     // 如果文件名是纯数字（可能带小数点）或者是 SxxExx 格式，跳过文件名搜索，直接使用文件夹名
@@ -216,7 +217,7 @@ export async function getXiaoyaMetadata(
 
     if (!isPureNumber && !isSeasonEpisode) {
       const { searchTMDB, getTMDBImageUrl } = await import('./tmdb.search');
-      const tmdbResult = await searchTMDB(tmdbApiKey, searchQuery, tmdbProxy);
+      const tmdbResult = await searchTMDB(tmdbApiKey, searchQuery, tmdbProxy, undefined, tmdbReverseProxy);
 
       if (tmdbResult.code === 200 && tmdbResult.result) {
         return {
@@ -239,12 +240,12 @@ export async function getXiaoyaMetadata(
   // 优先级 4: 实时搜索 TMDb（使用文件夹名）
   if (tmdbApiKey) {
     const searchQuery = folderName
-      .replace(/[\[\](){}]/g, ' ')
+      .replace(/[[\](){}]/g, ' ')
       .replace(/\d{4}/g, '')
       .trim();
 
     const { searchTMDB, getTMDBImageUrl } = await import('./tmdb.search');
-    const tmdbResult = await searchTMDB(tmdbApiKey, searchQuery, tmdbProxy);
+    const tmdbResult = await searchTMDB(tmdbApiKey, searchQuery, tmdbProxy, undefined, tmdbReverseProxy);
 
     if (tmdbResult.code === 200 && tmdbResult.result) {
       return {
@@ -290,7 +291,7 @@ export async function getXiaoyaEpisodes(
   if (isInSeasonDir) {
     // 电视剧：列出当前季的所有集
     const seasonDir = pathParts.slice(0, -1).join('/');
-    const listResponse = await xiaoyaClient.listDirectory(`/${seasonDir}`, 1, 100, true);
+    const listResponse = await xiaoyaClient.listDirectory(`/${seasonDir}`, 1, 100, false);
 
     const videoFiles = listResponse.content
       .filter(item =>
@@ -318,7 +319,7 @@ export async function getXiaoyaEpisodes(
   } else {
     // 目录路径或电影文件路径：列出该目录下的所有视频
     const targetDir = isFilePath ? pathParts.slice(0, -1).join('/') : pathParts.join('/');
-    const listResponse = await xiaoyaClient.listDirectory(`/${targetDir}`, 1, 100, true);
+    const listResponse = await xiaoyaClient.listDirectory(`/${targetDir}`, 1, 100, false);
 
     const videoFiles = listResponse.content
       .filter(item =>

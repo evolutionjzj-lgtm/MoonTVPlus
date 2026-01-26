@@ -2,70 +2,69 @@
 
 'use client';
 
-import { Heart, Search, X, Cloud, Sparkles, AlertCircle } from 'lucide-react';
+import { AlertCircle,Cloud, Heart, Sparkles, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
-import { usePlaySync } from '@/hooks/usePlaySync';
-import { getDoubanDetail } from '@/lib/douban.client';
-import { useDownload } from '@/contexts/DownloadContext';
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
-import { useSite } from '@/components/SiteProvider';
-
+import {
+  convertDanmakuFormat,
+  getDanmakuById,
+  getDanmakuFromCache,
+  getEpisodes,
+  initDanmakuModule,
+  loadDanmakuDisplayState,
+  loadDanmakuSettings,
+  saveDanmakuDisplayState,
+  saveDanmakuSettings,
+  searchAnime,
+} from '@/lib/danmaku/api';
+import {
+  getDanmakuAnimeId,
+  getDanmakuSearchKeyword,
+  getDanmakuSourceIndex,
+  getManualDanmakuSelection,
+  saveDanmakuAnimeId,
+  saveDanmakuSearchKeyword,
+  saveDanmakuSourceIndex,
+  saveManualDanmakuSelection,
+} from '@/lib/danmaku/selection-memory';
+import type { DanmakuAnime, DanmakuComment,DanmakuSelection, DanmakuSettings } from '@/lib/danmaku/types';
 import {
   deleteFavorite,
   deletePlayRecord,
   deleteSkipConfig,
   generateStorageKey,
   getAllPlayRecords,
+  getDanmakuFilterConfig,
+  getEpisodeFilterConfig,
   getSkipConfig,
   isFavorited,
   saveFavorite,
   savePlayRecord,
   saveSkipConfig,
   subscribeToDataUpdates,
-  getDanmakuFilterConfig,
-  getEpisodeFilterConfig,
 } from '@/lib/db.client';
-import {
-  convertDanmakuFormat,
-  getDanmakuById,
-  getEpisodes,
-  loadDanmakuSettings,
-  saveDanmakuSettings,
-  searchAnime,
-  initDanmakuModule,
-  getDanmakuFromCache,
-  saveDanmakuDisplayState,
-  loadDanmakuDisplayState,
-} from '@/lib/danmaku/api';
-import {
-  getDanmakuSourceIndex,
-  saveDanmakuSourceIndex,
-  getManualDanmakuSelection,
-  saveManualDanmakuSelection,
-  saveDanmakuSearchKeyword,
-  getDanmakuSearchKeyword,
-  saveDanmakuAnimeId,
-  getDanmakuAnimeId,
-} from '@/lib/danmaku/selection-memory';
-import type { DanmakuAnime, DanmakuSelection, DanmakuSettings, DanmakuComment } from '@/lib/danmaku/types';
-import { SearchResult, DanmakuFilterConfig, EpisodeFilterConfig } from '@/lib/types';
-import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
+import { getDoubanDetail } from '@/lib/douban.client';
 import { getTMDBImageUrl } from '@/lib/tmdb.search';
-
-import EpisodeSelector from '@/components/EpisodeSelector';
-import DownloadEpisodeSelector from '@/components/DownloadEpisodeSelector';
-import PageLayout from '@/components/PageLayout';
-import DoubanComments from '@/components/DoubanComments';
-import SmartRecommendations from '@/components/SmartRecommendations';
-import DanmakuFilterSettings from '@/components/DanmakuFilterSettings';
-import Toast, { ToastProps } from '@/components/Toast';
-import AIChatPanel from '@/components/AIChatPanel';
+import { DanmakuFilterConfig, EpisodeFilterConfig,SearchResult } from '@/lib/types';
+import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 import { useEnableComments } from '@/hooks/useEnableComments';
-import PansouSearch from '@/components/PansouSearch';
-import CustomHeatmap from '@/components/CustomHeatmap';
+import { usePlaySync } from '@/hooks/usePlaySync';
+
+import AIChatPanel from '@/components/AIChatPanel';
 import CorrectDialog from '@/components/CorrectDialog';
+import DanmakuFilterSettings from '@/components/DanmakuFilterSettings';
+import DoubanComments from '@/components/DoubanComments';
+import DownloadEpisodeSelector from '@/components/DownloadEpisodeSelector';
+import EpisodeSelector from '@/components/EpisodeSelector';
+import PageLayout from '@/components/PageLayout';
+import PansouSearch from '@/components/PansouSearch';
+import { useSite } from '@/components/SiteProvider';
+import SmartRecommendations from '@/components/SmartRecommendations';
+import Toast, { ToastProps } from '@/components/Toast';
+
+import { useDownload } from '@/contexts/DownloadContext';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
@@ -245,14 +244,8 @@ function PlayPageClient() {
           console.log('使用缓存的去广告代码');
         }
 
-        // 第一步：先只获取版本号，检查是否需要更新
-        const versionResponse = await fetch('/api/ad-filter');
-        if (!versionResponse.ok) {
-          console.warn('获取去广告代码版本失败，使用缓存');
-          return;
-        }
-
-        const { version } = await versionResponse.json();
+        // 从 window.RUNTIME_CONFIG 获取版本号
+        const version = (window as any).RUNTIME_CONFIG?.CUSTOM_AD_FILTER_VERSION || 0;
 
         // 如果版本号为 0，说明去广告未设置，清空缓存并跳过
         if (version === 0) {
@@ -267,7 +260,7 @@ function PlayPageClient() {
         if (!cachedVersion || parseInt(cachedVersion) !== version) {
           console.log('检测到去广告代码更新（版本 ' + version + '），获取最新代码');
 
-          // 第二步：获取完整代码
+          // 获取完整代码
           const fullResponse = await fetch('/api/ad-filter?full=true');
           if (!fullResponse.ok) {
             console.warn('获取完整去广告代码失败，使用缓存');
@@ -367,6 +360,7 @@ function PlayPageClient() {
   >([]);
   const [danmakuLoading, setDanmakuLoading] = useState(false);
   const [danmakuCount, setDanmakuCount] = useState(0);
+  const [danmakuOriginalCount, setDanmakuOriginalCount] = useState(0);
   const danmakuPluginRef = useRef<any>(null);
   const danmakuSettingsRef = useRef(danmakuSettings);
 
@@ -550,7 +544,7 @@ function PlayPageClient() {
     // 只有用户主动点击推荐时才会添加 _reload 参数
     if (reloadParam && urlTitle && urlTitle !== videoTitle && !isSourceChangingRef.current) {
       console.log('[PlayPage] User clicked recommendation, reloading page');
-      window.location.href = window.location.href;
+      window.location.reload();
     }
 
     // 重置换源标记
@@ -607,6 +601,13 @@ function PlayPageClient() {
       return;
     }
 
+    // 检查是否禁用了自动装填弹幕
+    const disableAutoLoad = localStorage.getItem('disableAutoLoadDanmaku') === 'true';
+    if (disableAutoLoad) {
+      console.log('[弹幕] 已禁用自动装填弹幕，跳过自动加载');
+      return;
+    }
+
     // 检查集数是否有效且是否已改变
     if (currentEpisodeIndex < 0 || !videoTitle) {
       return;
@@ -644,18 +645,6 @@ function PlayPageClient() {
         const cachedData = await getDanmakuFromCache(title, episodeIndex);
         if (cachedData && cachedData.comments.length > 0) {
           console.log(`[弹幕] 使用缓存: title="${title}", episodeIndex=${episodeIndex}, 数量=${cachedData.comments.length}`);
-
-          // 如果缓存中有元信息，更新当前选择状态
-          if (cachedData.metadata) {
-            setCurrentDanmakuSelection({
-              animeId: cachedData.metadata.animeId || 0,
-              episodeId: cachedData.metadata.episodeId || 0,
-              animeTitle: cachedData.metadata.animeTitle || '',
-              episodeTitle: cachedData.metadata.episodeTitle || '',
-              searchKeyword: cachedData.metadata.searchKeyword,
-              danmakuCount: cachedData.metadata.danmakuCount || cachedData.comments.length,
-            });
-          }
 
           // 如果弹幕插件还未初始化，等待初始化
           if (!danmakuPluginRef.current) {
@@ -698,6 +687,25 @@ function PlayPageClient() {
             }
           }
 
+          // 应用弹幕数量限制
+          const maxCount = typeof window !== 'undefined' ? parseInt(localStorage.getItem('danmakuMaxCount') || '0', 10) : 0;
+          let calculatedOriginalCount = 0;
+          if (maxCount > 0 && danmakuData.length > maxCount) {
+            const originalCount = danmakuData.length;
+            const step = danmakuData.length / maxCount;
+            const limitedData = [];
+            for (let i = 0; i < maxCount; i++) {
+              limitedData.push(danmakuData[Math.floor(i * step)]);
+            }
+            danmakuData = limitedData;
+            calculatedOriginalCount = originalCount;
+            setDanmakuOriginalCount(originalCount);
+            console.log(`弹幕数量限制: 原始 ${originalCount} 条，限制到 ${danmakuData.length} 条`);
+          } else {
+            // 没有应用限制，不显示原始数量
+            setDanmakuOriginalCount(0);
+          }
+
           // 加载弹幕到插件
           const currentSettings = danmakuSettingsRef.current;
           danmakuPluginRef.current.config({
@@ -720,6 +728,19 @@ function PlayPageClient() {
 
           setDanmakuCount(danmakuData.length);
           console.log(`[弹幕] 缓存加载成功，共 ${danmakuData.length} 条`);
+
+          // 更新当前选择状态（使用实时计算的数量）
+          if (cachedData.metadata) {
+            setCurrentDanmakuSelection({
+              animeId: cachedData.metadata.animeId || 0,
+              episodeId: cachedData.metadata.episodeId || 0,
+              animeTitle: cachedData.metadata.animeTitle || '',
+              episodeTitle: cachedData.metadata.episodeTitle || '',
+              searchKeyword: cachedData.metadata.searchKeyword,
+              danmakuCount: danmakuData.length,
+              danmakuOriginalCount: calculatedOriginalCount > 0 ? calculatedOriginalCount : undefined,
+            });
+          }
 
           await new Promise((resolve) => setTimeout(resolve, 1500));
           setDanmakuLoading(false);
@@ -1020,7 +1041,7 @@ function PlayPageClient() {
 
                   if (detCacheAge < detCacheMaxAge && data && data.backdrop) {
                     console.log('使用缓存的TMDB详情数据');
-                    setTmdbBackdrop(data.backdrop);
+                    setTmdbBackdrop(processImageUrl(data.backdrop));
 
                     // 如果没有豆瓣ID，使用TMDb数据补充
                     if (!videoDoubanId || videoDoubanId === 0) {
@@ -1054,7 +1075,7 @@ function PlayPageClient() {
         const result = await response.json();
 
         if (result.backdrop) {
-          setTmdbBackdrop(result.backdrop);
+          setTmdbBackdrop(processImageUrl(result.backdrop));
 
           // 如果没有豆瓣ID，使用TMDb数据补充
           if (!videoDoubanId || videoDoubanId === 0) {
@@ -1504,7 +1525,7 @@ function PlayPageClient() {
   const refreshXiaoyaUrl = async (
     hls: any,
     video: HTMLVideoElement,
-    isScheduled: boolean = false
+    isScheduled = false
   ) => {
     // 防抖：距离上次刷新不足3秒则不刷新
     const now = Date.now();
@@ -2471,37 +2492,51 @@ function PlayPageClient() {
     // 默认去广告规则
     if (!m3u8Content) return '';
 
+    // 广告关键字列表
+    const adKeywords = [
+      'sponsor',
+      '/ad/',
+      '/ads/',
+      'advert',
+      'advertisement',
+      '/adjump',
+      'redtraffic'
+    ];
+
     // 按行分割M3U8内容
     const lines = m3u8Content.split('\n');
     const filteredLines = [];
 
-    let nextdelete = false;
-    for (let i = 0; i < lines.length; i++) {
+    let i = 0;
+    while (i < lines.length) {
       const line = lines[i];
 
-      if (nextdelete) {
-        nextdelete = false;
+      // 跳过 #EXT-X-DISCONTINUITY 标识
+      if (line.includes('#EXT-X-DISCONTINUITY')) {
+        i++;
         continue;
       }
 
-      // 只过滤#EXT-X-DISCONTINUITY标识
-      if (!line.includes('#EXT-X-DISCONTINUITY')) {
-        if (
-          type == 'ruyi' &&
-          (line.includes('EXTINF:5.640000') ||
-            line.includes('EXTINF:2.960000') ||
-            line.includes('EXTINF:3.480000') ||
-            line.includes('EXTINF:4.000000') ||
-            line.includes('EXTINF:0.960000') ||
-            line.includes('EXTINF:10.000000') ||
-            line.includes('EXTINF:1.266667'))
-        ) {
-          nextdelete = true;
-          continue;
-        }
+      // 如果是 EXTINF 行，检查下一行 URL 是否包含广告关键字
+      if (line.includes('#EXTINF:')) {
+        // 检查下一行 URL 是否包含广告关键字
+        if (i + 1 < lines.length) {
+          const nextLine = lines[i + 1];
+          const containsAdKeyword = adKeywords.some(keyword =>
+            nextLine.toLowerCase().includes(keyword.toLowerCase())
+          );
 
-        filteredLines.push(line);
+          if (containsAdKeyword) {
+            // 跳过 EXTINF 行和 URL 行
+            i += 2;
+            continue;
+          }
+        }
       }
+
+      // 保留当前行
+      filteredLines.push(line);
+      i++;
     }
 
     return filteredLines.join('\n');
@@ -3279,7 +3314,7 @@ function PlayPageClient() {
             finalTitle = correction.title;
           }
           if (correction.posterPath) {
-            finalCover = getTMDBImageUrl(correction.posterPath);
+            finalCover = processImageUrl(getTMDBImageUrl(correction.posterPath));
           }
           if (correction.overview) {
             finalDesc = correction.overview;
@@ -3595,6 +3630,24 @@ function PlayPageClient() {
         }
       }
 
+      // 应用弹幕数量限制
+      const maxCount = typeof window !== 'undefined' ? parseInt(localStorage.getItem('danmakuMaxCount') || '0', 10) : 0;
+      let calculatedOriginalCount = 0;
+      if (maxCount > 0 && danmakuData.length > maxCount) {
+        const originalCount = danmakuData.length;
+        const step = danmakuData.length / maxCount;
+        const limitedData = [];
+        for (let i = 0; i < maxCount; i++) {
+          limitedData.push(danmakuData[Math.floor(i * step)]);
+        }
+        danmakuData = limitedData;
+        calculatedOriginalCount = originalCount;
+        setDanmakuOriginalCount(originalCount);
+        console.log(`弹幕数量限制: 原始 ${originalCount} 条，限制到 ${danmakuData.length} 条`);
+      } else {
+        setDanmakuOriginalCount(0);
+      }
+
       // 加载弹幕到插件，同时应用当前的弹幕设置
       const currentSettings = danmakuSettingsRef.current;
       danmakuPluginRef.current.config({
@@ -3627,6 +3680,7 @@ function PlayPageClient() {
           episodeTitle: metadata.episodeTitle || '',
           searchKeyword: metadata.searchKeyword,
           danmakuCount: danmakuData.length,
+          danmakuOriginalCount: calculatedOriginalCount > 0 ? calculatedOriginalCount : undefined,
         });
       }
 
@@ -3644,6 +3698,9 @@ function PlayPageClient() {
   // 预加载下一集弹幕（完全复制 loadDanmakuForCurrentEpisode 的逻辑）
   const preloadNextEpisodeDanmaku = async () => {
     try {
+      const disableAutoLoad = localStorage.getItem('disableAutoLoadDanmaku') === 'true';
+      if (disableAutoLoad) return;
+
       const title = videoTitleRef.current;
       if (!title) {
         return;
@@ -3791,6 +3848,22 @@ function PlayPageClient() {
         });
       }
 
+      // 应用弹幕数量限制
+      const maxCount = typeof window !== 'undefined' ? parseInt(localStorage.getItem('danmakuMaxCount') || '0', 10) : 0;
+      if (maxCount > 0 && danmakuData.length > maxCount) {
+        const originalCount = danmakuData.length;
+        const step = danmakuData.length / maxCount;
+        const limitedData = [];
+        for (let i = 0; i < maxCount; i++) {
+          limitedData.push(danmakuData[Math.floor(i * step)]);
+        }
+        danmakuData = limitedData;
+        setDanmakuOriginalCount(originalCount);
+        console.log(`弹幕数量限制: 原始 ${originalCount} 条，限制到 ${danmakuData.length} 条`);
+      } else {
+        setDanmakuOriginalCount(0);
+      }
+
       // 加载弹幕到播放器（使用 reset 方法清空，不触发显示/隐藏事件）
       if (danmakuPluginRef.current) {
         danmakuPluginRef.current.reset();
@@ -3837,7 +3910,7 @@ function PlayPageClient() {
   };
 
   // 处理弹幕选择
-  const handleDanmakuSelect = async (selection: DanmakuSelection, isManual: boolean = false) => {
+  const handleDanmakuSelect = async (selection: DanmakuSelection, isManual = false) => {
     console.log(`[弹幕选择] isManual=${isManual}, selection:`, selection);
     setCurrentDanmakuSelection(selection);
 
@@ -3870,7 +3943,7 @@ function PlayPageClient() {
   };
 
   // 处理用户选择弹幕源
-  const handleDanmakuSourceSelect = async (selectedAnime: DanmakuAnime, selectedIndex?: number, isManualSearch: boolean = false) => {
+  const handleDanmakuSourceSelect = async (selectedAnime: DanmakuAnime, selectedIndex?: number, isManualSearch = false) => {
     setShowDanmakuSourceSelector(false);
 
     try {
@@ -3970,6 +4043,9 @@ function PlayPageClient() {
 
   // 自动搜索并加载弹幕
   const autoSearchDanmaku = async () => {
+    const disableAutoLoad = localStorage.getItem('disableAutoLoadDanmaku') === 'true';
+    if (disableAutoLoad) return;
+
     const title = videoTitleRef.current;
     if (!title) {
       console.warn('视频标题为空，无法自动搜索弹幕');
@@ -3984,18 +4060,6 @@ function PlayPageClient() {
       const cachedData = await getDanmakuFromCache(title, currentEpisodeIndex);
       if (cachedData && cachedData.comments.length > 0) {
         console.log(`[弹幕] 使用缓存: title="${title}", episodeIndex=${currentEpisodeIndex}, 数量=${cachedData.comments.length}`);
-
-        // 如果缓存中有元信息，更新当前选择状态
-        if (cachedData.metadata) {
-          setCurrentDanmakuSelection({
-            animeId: cachedData.metadata.animeId || 0,
-            episodeId: cachedData.metadata.episodeId || 0,
-            animeTitle: cachedData.metadata.animeTitle || '',
-            episodeTitle: cachedData.metadata.episodeTitle || '',
-            searchKeyword: cachedData.metadata.searchKeyword,
-            danmakuCount: cachedData.metadata.danmakuCount || cachedData.comments.length,
-          });
-        }
 
         // 直接加载缓存的弹幕，不需要调用 API
         if (!danmakuPluginRef.current) {
@@ -4037,6 +4101,25 @@ function PlayPageClient() {
           }
         }
 
+        // 应用弹幕数量限制
+        const maxCount = typeof window !== 'undefined' ? parseInt(localStorage.getItem('danmakuMaxCount') || '0', 10) : 0;
+        let calculatedOriginalCount = 0;
+        if (maxCount > 0 && danmakuData.length > maxCount) {
+          const originalCount = danmakuData.length;
+          const step = danmakuData.length / maxCount;
+          const limitedData = [];
+          for (let i = 0; i < maxCount; i++) {
+            limitedData.push(danmakuData[Math.floor(i * step)]);
+          }
+          danmakuData = limitedData;
+          calculatedOriginalCount = originalCount;
+          setDanmakuOriginalCount(originalCount);
+          console.log(`弹幕数量限制: 原始 ${originalCount} 条，限制到 ${danmakuData.length} 条`);
+        } else {
+          // 没有应用限制，不显示原始数量
+          setDanmakuOriginalCount(0);
+        }
+
         // 加载弹幕到插件
         const currentSettings = danmakuSettingsRef.current;
         danmakuPluginRef.current.config({
@@ -4064,6 +4147,19 @@ function PlayPageClient() {
 
         setDanmakuCount(danmakuData.length);
         console.log(`[弹幕] 缓存加载成功，共 ${danmakuData.length} 条`);
+
+        // 更新当前选择状态（使用实时计算的数量）
+        if (cachedData.metadata) {
+          setCurrentDanmakuSelection({
+            animeId: cachedData.metadata.animeId || 0,
+            episodeId: cachedData.metadata.episodeId || 0,
+            animeTitle: cachedData.metadata.animeTitle || '',
+            episodeTitle: cachedData.metadata.episodeTitle || '',
+            searchKeyword: cachedData.metadata.searchKeyword,
+            danmakuCount: danmakuData.length,
+            danmakuOriginalCount: calculatedOriginalCount > 0 ? calculatedOriginalCount : undefined,
+          });
+        }
 
         // 延迟一下让用户看到弹幕数量
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -4424,7 +4520,7 @@ function PlayPageClient() {
         setVideoTitle(correction.title);
       }
       if (correction.posterPath) {
-        const fullPosterUrl = getTMDBImageUrl(correction.posterPath);
+        const fullPosterUrl = processImageUrl(getTMDBImageUrl(correction.posterPath));
         setVideoCover(fullPosterUrl);
       }
       if (correction.overview) {
@@ -4766,12 +4862,14 @@ function PlayPageClient() {
                       return;
                     }
                     // 检查其他 HTTP 错误状态码
-                    const statusCode = data.response?.code || data.response?.status;
-                    if (statusCode && statusCode >= 400) {
-                      console.log(`HTTP ${statusCode} 错误`);
-                      hls.destroy();
-                      setVideoError(`HTTP ${statusCode} 错误`);
-                      return;
+                    {
+                      const statusCode = data.response?.code || data.response?.status;
+                      if (statusCode && statusCode >= 400) {
+                        console.log(`HTTP ${statusCode} 错误`);
+                        hls.destroy();
+                        setVideoError(`HTTP ${statusCode} 错误`);
+                        return;
+                      }
                     }
                     console.log('网络错误，尝试恢复...');
                     hls.startLoad();
@@ -4886,8 +4984,8 @@ function PlayPageClient() {
               return '打开设置';
             },
           },
-          // 热力图开关（始终显示，不再依赖 danmakuHeatmapDisabled）
-          {
+          // 热力图开关（仅在未禁用时显示）
+          ...(!danmakuHeatmapDisabledRef.current ? [{
             name: '弹幕热力',
             html: '弹幕热力',
             icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" fill="#ffffff"/></svg>',
@@ -4903,7 +5001,7 @@ function PlayPageClient() {
               }
               return newVal;
             },
-          },
+          }] : []),
           ...(webGPUSupported ? [
             {
               name: 'Anime4K超分',
@@ -7094,7 +7192,10 @@ function PlayPageClient() {
                           />
                         </svg>
                         <span className='text-sm font-medium text-green-400'>
-                          已加载 {danmakuCount} 条弹幕
+                          {danmakuOriginalCount > 0
+                            ? `已加载 ${danmakuCount} 条弹幕（原始 ${danmakuOriginalCount} 条）`
+                            : `已加载 ${danmakuCount} 条弹幕`
+                          }
                         </span>
                       </>
                     ) : (
@@ -7856,7 +7957,7 @@ const applyCorrection = (detail: SearchResult, correction: any): SearchResult =>
   return {
     ...detail,
     title: correction.title || detail.title,
-    poster: correction.posterPath ? getTMDBImageUrl(correction.posterPath) : detail.poster,
+    poster: correction.posterPath ? processImageUrl(getTMDBImageUrl(correction.posterPath)) : detail.poster,
     year: correction.releaseDate || detail.year,
     desc: correction.overview || detail.desc,
     rating: correction.voteAverage || detail.rating,

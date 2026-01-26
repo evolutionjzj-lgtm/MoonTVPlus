@@ -2,9 +2,9 @@
 
 'use client';
 
-import { ChevronRight, Bot, ListVideo } from 'lucide-react';
+import { Bot, ChevronRight, ListVideo } from 'lucide-react';
 import Link from 'next/link';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 import {
   BangumiCalendarData,
@@ -13,15 +13,17 @@ import {
 import { getDoubanCategories } from '@/lib/douban.client';
 import { getTMDBImageUrl, TMDBItem } from '@/lib/tmdb.client';
 import { DoubanItem } from '@/lib/types';
+import { processImageUrl } from '@/lib/utils';
 
+import AIChatPanel from '@/components/AIChatPanel';
+import BannerCarousel from '@/components/BannerCarousel';
 import ContinueWatching from '@/components/ContinueWatching';
+import FireworksCanvas from '@/components/FireworksCanvas';
+import HttpWarningDialog from '@/components/HttpWarningDialog';
 import PageLayout from '@/components/PageLayout';
 import ScrollableRow from '@/components/ScrollableRow';
 import { useSite } from '@/components/SiteProvider';
 import VideoCard from '@/components/VideoCard';
-import HttpWarningDialog from '@/components/HttpWarningDialog';
-import BannerCarousel from '@/components/BannerCarousel';
-import AIChatPanel from '@/components/AIChatPanel';
 
 // 首页模块配置接口
 interface HomeModule {
@@ -149,7 +151,9 @@ function HomeClient() {
     const setCache = (key: string, data: any) => {
       try {
         localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-      } catch {}
+      } catch {
+        // Ignore localStorage errors
+      }
     };
 
     const moviesCache = getCache('homepage_movies');
@@ -516,7 +520,7 @@ function HomeClient() {
                 >
                   <VideoCard
                     title={item.title}
-                    poster={getTMDBImageUrl(item.poster_path)}
+                    poster={processImageUrl(getTMDBImageUrl(item.poster_path))}
                     year={item.release_date?.split('-')?.[0] || ''}
                     rate={
                       item.vote_average && item.vote_average > 0
@@ -541,6 +545,7 @@ function HomeClient() {
 
   return (
     <PageLayout>
+      <FireworksCanvas />
       {/* TMDB 热门轮播图 */}
       <div className='w-full mb-4'>
         <BannerCarousel />
@@ -550,40 +555,40 @@ function HomeClient() {
         <div className='max-w-[95%] mx-auto'>
           {/* 首页内容 */}
           <>
-              {/* 源站寻片和AI问片入口 */}
-              <div className='flex items-center justify-end gap-2 mb-4'>
-                {/* 源站寻片入口 */}
-                {sourceSearchEnabled && (
-                  <Link href='/source-search'>
-                    <button
-                      className='p-2 rounded-lg text-blue-500 hover:text-blue-600 transition-colors'
-                      title='源站寻片'
-                    >
-                      <ListVideo size={20} />
-                    </button>
-                  </Link>
-                )}
-
-                {/* AI问片入口 */}
-                {aiEnabled && (
+            {/* 源站寻片和AI问片入口 */}
+            <div className='flex items-center justify-end gap-2 mb-4'>
+              {/* 源站寻片入口 */}
+              {sourceSearchEnabled && (
+                <Link href='/source-search'>
                   <button
-                    onClick={() => setShowAIChat(true)}
-                    className='p-2 rounded-lg text-purple-500 hover:text-purple-600 transition-colors'
-                    title='AI问片'
+                    className='p-2 rounded-lg text-blue-500 hover:text-blue-600 transition-colors'
+                    title='源站寻片'
                   >
-                    <Bot size={20} />
+                    <ListVideo size={20} />
                   </button>
-                )}
-              </div>
+                </Link>
+              )}
 
-              {/* 继续观看 */}
-              <ContinueWatching />
+              {/* AI问片入口 */}
+              {aiEnabled && (
+                <button
+                  onClick={() => setShowAIChat(true)}
+                  className='p-2 rounded-lg text-purple-500 hover:text-purple-600 transition-colors'
+                  title='AI问片'
+                >
+                  <Bot size={20} />
+                </button>
+              )}
+            </div>
 
-              {/* 根据配置动态渲染首页模块 */}
-              {homeModules
-                .filter(module => module.enabled)
-                .sort((a, b) => a.order - b.order)
-                .map(module => renderModule(module.id))}
+            {/* 继续观看 */}
+            <ContinueWatching />
+
+            {/* 根据配置动态渲染首页模块 */}
+            {homeModules
+              .filter(module => module.enabled)
+              .sort((a, b) => a.order - b.order)
+              .map(module => renderModule(module.id))}
           </>
         </div>
       </div>

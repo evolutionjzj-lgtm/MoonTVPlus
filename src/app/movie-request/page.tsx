@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useEffect,useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle, AlertCircle, Plus } from 'lucide-react';
+
+import { getTMDBImageUrl } from '@/lib/tmdb.client';
+import { processImageUrl } from '@/lib/utils';
 
 import PageLayout from '@/components/PageLayout';
 
@@ -116,7 +119,7 @@ export default function MovieRequestPage() {
   const submitRequest = async (item: TMDBResult, season?: number) => {
     setSubmitting(true);
     try {
-      let poster = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : undefined;
+      let poster = item.poster_path ? processImageUrl(getTMDBImageUrl(item.poster_path, 'w500')) : undefined;
       let title = item.title || item.name || '';
 
       if (season && seasons.length > 0) {
@@ -124,7 +127,7 @@ export default function MovieRequestPage() {
         if (seasonData) {
           title = `${title} ${seasonData.name}`;
           if (seasonData.poster_path) {
-            poster = `https://image.tmdb.org/t/p/w500${seasonData.poster_path}`;
+            poster = processImageUrl(getTMDBImageUrl(seasonData.poster_path, 'w500'));
           }
         }
       }
@@ -310,7 +313,7 @@ export default function MovieRequestPage() {
               >
                 {item.poster_path ? (
                   <img
-                    src={`https://image.tmdb.org/t/p/w500${item.poster_path}`}
+                    src={processImageUrl(getTMDBImageUrl(item.poster_path, 'w500'))}
                     alt={item.title || item.name}
                     className='w-full aspect-[2/3] object-cover'
                   />

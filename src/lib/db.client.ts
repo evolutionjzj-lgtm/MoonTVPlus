@@ -15,7 +15,7 @@
  */
 
 import { getAuthInfoFromBrowserCookie } from './auth';
-import { SkipConfig, DanmakuFilterConfig, EpisodeFilterConfig } from './types';
+import { DanmakuFilterConfig, EpisodeFilterConfig,SkipConfig } from './types';
 
 // 全局错误触发函数
 function triggerGlobalError(message: string) {

@@ -24,10 +24,10 @@ import {
 import { processImageUrl } from '@/lib/utils';
 import { useLongPress } from '@/hooks/useLongPress';
 
-import { ImagePlaceholder } from '@/components/ImagePlaceholder';
-import MobileActionSheet from '@/components/MobileActionSheet';
 import AIChatPanel from '@/components/AIChatPanel';
 import DetailPanel from '@/components/DetailPanel';
+import { ImagePlaceholder } from '@/components/ImagePlaceholder';
+import MobileActionSheet from '@/components/MobileActionSheet';
 
 export interface VideoCardProps {
   id?: string;
@@ -167,6 +167,14 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
   const actualYear = year;
   const actualQuery = query || '';
   const actualSearchType = type;
+  const displayYear = useMemo(() => {
+    if (!actualYear) return '';
+    const normalized = actualYear.trim();
+    if (!normalized || normalized === 'unknown') return '';
+    const digits = normalized.replace(/\D/g, '');
+    if (!digits) return normalized;
+    return digits.slice(-2).padStart(2, '0');
+  }, [actualYear]);
 
   // 获取收藏状态（搜索结果页面不检查）
   useEffect(() => {
@@ -944,7 +952,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
               </div>
 
               {/* 年份显示 */}
-              {actualYear && actualYear !== 'unknown' && actualYear.trim() !== '' && (
+              {displayYear && (
                 <div
                   className='bg-black/60 text-white text-[9px] sm:text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full shadow-md transition-all duration-300 ease-out group-hover:scale-110 backdrop-blur-sm flex items-center justify-center'
                   style={{
@@ -957,9 +965,45 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
                     return false;
                   }}
                 >
-                  {actualYear.slice(-2)}年
+                  {displayYear}年
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 竖向模式：来源名称显示在海报右下角 */}
+          {orientation === 'vertical' && config.showSourceName && source_name && !cmsData && (
+            <div
+              className='absolute bottom-1 right-1 sm:bottom-2 sm:right-2'
+              style={{
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
+                WebkitTouchCallout: 'none',
+              } as React.CSSProperties}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                return false;
+              }}
+            >
+              <span
+                className={`inline-block border rounded px-1 py-0.5 text-[8px] text-white/90 bg-black/60 ${
+                  actualSource === 'xiaoya' ? 'border-blue-500' : actualSource === 'openlist' || actualSource === 'emby' || actualSource?.startsWith('emby_') ? 'border-yellow-500' : origin === 'live' ? 'border-red-500' : 'border-white/60'
+                }`}
+                style={{
+                  WebkitUserSelect: 'none',
+                  userSelect: 'none',
+                  WebkitTouchCallout: 'none',
+                } as React.CSSProperties}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  return false;
+                }}
+              >
+                {origin === 'live' && (
+                  <Radio size={8} className="inline-block text-white/90 mr-0.5" />
+                )}
+                {source_name}
+              </span>
             </div>
           )}
 
@@ -1351,7 +1395,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
               </div>
             )}
 
-            {/* 标题与来源 */}
+            {/* 标题 */}
             <div
               className='mt-2 text-center'
               style={{
@@ -1410,38 +1454,6 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
                   ></div>
                 </div>
               </div>
-              {config.showSourceName && source_name && !cmsData && (
-                <span
-                  className='block text-xs text-gray-500 dark:text-gray-400 mt-1'
-                  style={{
-                    WebkitUserSelect: 'none',
-                    userSelect: 'none',
-                    WebkitTouchCallout: 'none',
-                  } as React.CSSProperties}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    return false;
-                  }}
-                >
-                  <span
-                    className='inline-block border rounded px-2 py-0.5 border-gray-500/60 dark:border-gray-400/60 transition-all duration-300 ease-in-out group-hover:border-green-500/60 group-hover:text-green-600 dark:group-hover:text-green-400'
-                    style={{
-                      WebkitUserSelect: 'none',
-                      userSelect: 'none',
-                      WebkitTouchCallout: 'none',
-                    } as React.CSSProperties}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      return false;
-                    }}
-                  >
-                    {origin === 'live' && (
-                      <Radio size={12} className="inline-block text-gray-500 dark:text-gray-400 mr-1.5" />
-                    )}
-                    {source_name}
-                  </span>
-                </span>
-              )}
             </div>
           </>
         )}
